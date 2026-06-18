@@ -1,0 +1,976 @@
+import { useEffect, useRef, useState } from 'react';
+
+const INTRO_EXIT_DURATION = 900;
+const DIRECTORY_EXIT_DURATION = 560;
+
+const contact = {
+  phone: '13600109396',
+  email: '3359866061@qq.com',
+};
+
+const stats = [
+  { value: '10', label: '作品集页面整理' },
+  { value: '5+', label: '项目方向覆盖' },
+  { value: '8万+', label: '单篇内容曝光' },
+  { value: '13.8%', label: '封面点击率记录' },
+];
+
+const strengths = [
+  {
+    title: 'AI 设计工作流',
+    text: '能把主题、受众、信息层级和浏览路径转译成提示词、页面结构与可落地原型。',
+  },
+  {
+    title: '品牌与内容表达',
+    text: '擅长把项目定位、视觉语气和内容节奏统一起来，让画面服务品牌信息而不是停留在装饰。',
+  },
+  {
+    title: '图文编辑与排版',
+    text: '能够独立完成选题、资料整理、文案、图片筛选和长图文排版，关注移动端阅读体验。',
+  },
+  {
+    title: '短视频策划',
+    text: '从主题、脚本到镜头节奏拆解观点，并完成拍摄、剪辑、调色和画面包装。',
+  },
+  {
+    title: '数据复盘意识',
+    text: '会结合曝光、点击率、播放量和互动反馈，反推封面、标题与内容节奏优化方向。',
+  },
+  {
+    title: '跨工具协作',
+    text: '熟悉 ChatGPT、Codex、Figma、HTML/CSS、即梦、Midjourney、剪映、PR、PS 等工具组合。',
+  },
+];
+
+const tools = [
+  'ChatGPT',
+  'Codex',
+  'Figma',
+  'HTML / CSS',
+  '即梦',
+  'Midjourney',
+  '可灵',
+  '剪映',
+  'PR',
+  'PS',
+  '小红书',
+  '表格',
+];
+
+const publicAsset = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+
+const projects = {
+  'ai-web': {
+    eyebrow: 'AI PROJECT 01',
+    title: 'AI 网页设计',
+    type: 'AIGC / Web Prototype',
+    image: '/portfolio-pages/page-03.webp',
+    summary:
+      '用 AI 辅助完成网页创意、页面结构、视觉风格和前端原型，把内容想法整理成可浏览的页面。',
+    roles: ['需求拆解', '提示词设计', '页面结构', '视觉迭代', '原型整理'],
+    tools: ['ChatGPT', 'Codex', 'Figma', 'HTML', 'CSS', '即梦', 'Gemini'],
+    process: [
+      '明确网页主题、目标受众、核心信息和用户浏览路径。',
+      '用 AI 产出页面文案、视觉方向、模块结构和首屏表达。',
+      '删除空泛表达，保留与主题、岗位和阅读习惯匹配的内容。',
+      '整理成网页原型或 HTML 页面，统一标题层级、配色和图片位置。',
+      '检查电脑端和移动端效果，修正文字溢出、布局拥挤和图片比例问题。',
+    ],
+    result: '形成可浏览的网页原型，并沉淀出从提示词到页面结构再到前端落地的 AI 设计工作流。',
+  },
+  'ai-storyboard': {
+    eyebrow: 'AI PROJECT 02',
+    title: 'AI 漫剧与分镜提示词创作',
+    type: 'AIGC / Storyboard',
+    image: '/portfolio-pages/page-04.webp',
+    summary:
+      '把故事创意拆成画面、镜头和提示词，用于 AI 漫剧、广告短片或短视频前期策划。',
+    roles: ['故事构思', '人物设定', '分镜拆解', '画面提示词', '镜头节奏设计'],
+    tools: ['ChatGPT', '即梦', 'Midjourney', '可灵', '剪映', 'PR'],
+    process: [
+      '明确故事主题、人物关系、冲突来源和情绪走向。',
+      '将故事整理成开头、冲突、转折、结尾，保证短剧情有完整节奏。',
+      '为每个镜头写出景别、人物动作、画面风格、光线和镜头语言。',
+      '把分镜转换成可执行提示词，用于文生图或图生视频。',
+      '根据生成结果继续调整人物一致性、画面节奏和镜头衔接。',
+    ],
+    result: '让分镜提示词能够直接服务于角色一致性、镜头语言和画面风格控制。',
+  },
+  'social-media': {
+    eyebrow: 'PROJECT 01',
+    title: '横道｜广州约拍账号运营',
+    type: 'Social Media Operation',
+    image: '/portfolio-pages/page-06.webp',
+    summary:
+      '围绕广州约拍场景搭建垂类小红书账号，通过图文与视频内容展示拍摄风格、约拍场景和服务信息。',
+    roles: ['账号定位', '选题', '发布', '数据复盘'],
+    tools: ['小红书', '剪映', 'PR', 'PS', '表格'],
+    process: [
+      '先明确垂类方向和目标用户，再围绕客片展示、约拍避坑、风格推荐等方向建立选题。',
+      '用图文与短视频呈现拍摄风格、服务信息和城市约拍场景。',
+      '发布后结合曝光、点击率、播放量和互动情况，调整封面、标题和内容节奏。',
+    ],
+    metrics: [
+      { value: '26', label: '篇图文视频' },
+      { value: '11888', label: '近 30 日曝光' },
+      { value: '13.8%', label: '封面点击率' },
+      { value: '8万+', label: '单篇曝光' },
+    ],
+    result: '把约拍服务内容做成可持续更新的账号，并通过数据复盘优化内容表达。',
+  },
+  editorial: {
+    eyebrow: 'PROJECT 02',
+    title: '微信公众号图文创作',
+    type: 'Editorial / Layout',
+    image: '/portfolio-pages/page-07.webp',
+    summary:
+      '围绕城市文化与生活方式选题，完成从主题规划、资料整理到文案、图片和排版的完整图文生产。',
+    roles: ['选题规划', '文案', '图片整理', '排版设计'],
+    tools: ['微信公众号编辑器', 'PS', '资料整理', '图文排版'],
+    process: [
+      '从城市饮食、街巷生活和地方记忆切入，确定推文主题与阅读角度。',
+      '搭建标题、导语、段落层级和图片节奏，再补充正文细节。',
+      '统一色调、图片比例和段落留白，让长图文更适合手机端阅读。',
+    ],
+    metrics: [
+      { value: '15', label: '篇城市文化类推文' },
+      { value: '3万+', label: '字原创图文内容累计产出' },
+      { value: '独立', label: '完成文案、图片与排版设计' },
+    ],
+    result: '完成城市文化宣传专题的图文生产，形成从选题到排版的完整内容能力。',
+  },
+  'video-production': {
+    eyebrow: 'PROJECT 03',
+    title: '诚信筑影·青春定格',
+    type: 'Short Video Planning',
+    image: '/portfolio-pages/page-09.webp',
+    summary:
+      '校级微视频比赛作品，围绕校园诚信、迎评促建和“强国有我”等主题进行短视频创作。',
+    roles: ['拍摄', '剪辑', '创意策划', '视觉包装'],
+    tools: ['PR', 'PS', '拍摄', '剪辑', '调色'],
+    process: [
+      '以梦境为切入点设计剧情，用轻松幽默的方式呈现校园诚信议题。',
+      '完成拍摄、剪辑、调色和画面包装，保证成片节奏和主题表达统一。',
+      '在有限素材条件下强化故事结构，让观点更容易被看完和记住。',
+    ],
+    metrics: [{ value: '校级二等奖', label: '项目结果' }],
+    result: '作品获得校级二等奖，体现短视频脚本策划、镜头组织和视觉包装能力。',
+  },
+};
+
+const directoryItems = [
+  { id: 'home', label: 'HOME' },
+  { id: 'overview', label: 'OVERVIEW' },
+  { id: 'skills', label: 'SKILLS' },
+  { id: 'ai-web', label: 'AI WEB' },
+  { id: 'ai-storyboard', label: 'AI STORYBOARD' },
+  { id: 'social-media', label: 'SOCIAL MEDIA' },
+  { id: 'editorial', label: 'EDITORIAL' },
+  { id: 'video-production', label: 'VIDEO PRODUCTION' },
+  { id: 'about', label: 'ABOUT' },
+];
+
+const directoryOffsets = ['0vw', '3vw', '0.7vw', '4vw', '1.6vw', '5vw', '2.2vw', '3.4vw', '0.4vw'];
+
+const jobDirections = [
+  '新媒体运营',
+  '内容策划',
+  '图文编辑',
+  '短视频策划',
+  'AI 创作',
+  '网页设计',
+  '剪辑与拍摄',
+];
+
+const resumeHref = publicAsset('/assets/liu-guoyu-resume.pdf');
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function lerp(start, end, amount) {
+  return start + (end - start) * amount;
+}
+
+function mixRgb(from, to, amount) {
+  const ratio = clamp(amount, 0, 1);
+  return from.map((value, index) => Math.round(lerp(value, to[index], ratio))).join(' ');
+}
+
+function GlassSignatureLine({ nameRef }) {
+  const svgRef = useRef(null);
+  const glowPathRef = useRef(null);
+  const bodyPathRef = useRef(null);
+  const highlightPathRef = useRef(null);
+
+  useEffect(() => {
+    const motion = {
+      mode: 'orbit',
+      current: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      target: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      previous: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+      speed: 0,
+      lastMove: 0,
+    };
+    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    let frameId = 0;
+
+    const getNameRect = () => {
+      const rect = nameRef.current?.getBoundingClientRect();
+
+      if (rect?.width && rect?.height) return rect;
+
+      return {
+        left: window.innerWidth * 0.32,
+        top: window.innerHeight * 0.42,
+        width: window.innerWidth * 0.36,
+        height: window.innerHeight * 0.16,
+      };
+    };
+
+    const isInsideName = (x, y) => {
+      const rect = getNameRect();
+      return x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
+    };
+
+    const pointOnOrbit = (rect, angle, time, phase = 0) => {
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const radiusX = rect.width / 2 + clamp(window.innerWidth * 0.045, 40, 70);
+      const radiusY = rect.height / 2 + clamp(window.innerHeight * 0.055, 24, 45);
+      const wobble = 1 + Math.sin(time * 0.00135 + phase) * 0.035;
+
+      return {
+        x: centerX + Math.cos(angle) * radiusX * wobble,
+        y: centerY + Math.sin(angle) * radiusY * (1 + Math.cos(time * 0.0011 + phase) * 0.045),
+      };
+    };
+
+    const buildOrbitPath = (time) => {
+      const rect = getNameRect();
+      const baseAngle = time * 0.00092 + Math.sin(time * 0.00055) * 0.18;
+      const p0 = pointOnOrbit(rect, baseAngle - 1.92, time, 0.2);
+      const p1 = pointOnOrbit(rect, baseAngle - 0.9, time, 1.3);
+      const p2 = pointOnOrbit(rect, baseAngle + 0.16, time, 2.4);
+      const p3 = pointOnOrbit(rect, baseAngle + 1.1, time, 3.1);
+
+      return `M ${p0.x.toFixed(1)} ${p0.y.toFixed(1)} C ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}, ${p3.x.toFixed(1)} ${p3.y.toFixed(1)}`;
+    };
+
+    const buildFollowPath = () => {
+      motion.current.x = lerp(motion.current.x, motion.target.x, 0.11);
+      motion.current.y = lerp(motion.current.y, motion.target.y, 0.11);
+
+      const dx = motion.current.x - motion.previous.x;
+      const dy = motion.current.y - motion.previous.y;
+      const distance = Math.hypot(dx, dy);
+      motion.speed = lerp(motion.speed, distance, 0.22);
+
+      const length = clamp(44 + motion.speed * 9.5, 48, 138);
+      const angle = Math.atan2(dy || 0.01, dx || 0.01);
+      const normalAngle = angle + Math.PI / 2;
+      const tail = {
+        x: motion.current.x - Math.cos(angle) * length,
+        y: motion.current.y - Math.sin(angle) * length,
+      };
+      const head = {
+        x: motion.current.x + Math.cos(angle) * 18,
+        y: motion.current.y + Math.sin(angle) * 18,
+      };
+      const curve = clamp(10 + motion.speed * 2.2, 10, 34);
+      const control = {
+        x: (tail.x + head.x) / 2 + Math.cos(normalAngle) * curve,
+        y: (tail.y + head.y) / 2 + Math.sin(normalAngle) * curve,
+      };
+
+      motion.previous.x = motion.current.x;
+      motion.previous.y = motion.current.y;
+
+      return `M ${tail.x.toFixed(1)} ${tail.y.toFixed(1)} Q ${control.x.toFixed(1)} ${control.y.toFixed(1)} ${head.x.toFixed(1)} ${head.y.toFixed(1)}`;
+    };
+
+    const setGlassPath = (path, opacity) => {
+      [glowPathRef.current, bodyPathRef.current, highlightPathRef.current].forEach((node) => {
+        node?.setAttribute('d', path);
+      });
+      if (svgRef.current) {
+        svgRef.current.style.opacity = String(opacity);
+      }
+    };
+
+    const handlePointerMove = (event) => {
+      if (isCoarsePointer) return;
+
+      const isOverName = isInsideName(event.clientX, event.clientY);
+      motion.mode = isOverName ? 'orbit' : 'follow';
+      motion.target.x = event.clientX + 18;
+      motion.target.y = event.clientY + 14;
+      motion.lastMove = performance.now();
+    };
+
+    const animate = (time) => {
+      const idleTime = time - motion.lastMove;
+      const shouldOrbit = isCoarsePointer || motion.mode === 'orbit' || idleTime > 1800;
+      const path = shouldOrbit ? buildOrbitPath(time) : buildFollowPath();
+      const followFade = shouldOrbit ? 0.5 : clamp(0.62 - idleTime / 2600, 0.12, 0.62);
+
+      setGlassPath(path, followFade);
+      frameId = window.requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    frameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [nameRef]);
+
+  return (
+    <svg className="glass-signature" ref={svgRef} aria-hidden="true">
+      <defs>
+        <linearGradient id="glassRibbonStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0)" />
+          <stop offset="18%" stopColor="rgba(183, 232, 255, 0.48)" />
+          <stop offset="50%" stopColor="rgba(245, 253, 255, 0.78)" />
+          <stop offset="78%" stopColor="rgba(118, 204, 246, 0.5)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
+        <linearGradient id="glassRibbonHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(255, 255, 255, 0)" />
+          <stop offset="42%" stopColor="rgba(255, 255, 255, 0.84)" />
+          <stop offset="66%" stopColor="rgba(198, 239, 255, 0.34)" />
+          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        </linearGradient>
+        <filter id="glassRibbonSoftBlur" x="-20%" y="-80%" width="140%" height="260%">
+          <feGaussianBlur stdDeviation="3.8" />
+        </filter>
+      </defs>
+      <path className="glass-line-glow" ref={glowPathRef} />
+      <path className="glass-line-body" ref={bodyPathRef} />
+      <path className="glass-line-highlight" ref={highlightPathRef} />
+    </svg>
+  );
+}
+
+function LandingIntro({ isExiting, onEnter }) {
+  const nameRef = useRef(null);
+  const markRef = useRef(null);
+
+  useEffect(() => {
+    const mark = markRef.current;
+    if (!mark) return undefined;
+
+    const motion = {
+      position: 46,
+      targetPosition: 46,
+      darkness: 0,
+      targetDarkness: 0,
+      reflection: 0,
+      targetReflection: 0,
+      lastMove: 0,
+      previous: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    };
+    let frameId = 0;
+
+    const handlePointerMove = (event) => {
+      const dx = event.clientX - motion.previous.x;
+      const dy = event.clientY - motion.previous.y;
+      const speed = Math.hypot(dx, dy);
+      const rect = nameRef.current?.getBoundingClientRect();
+      const relativeX = rect?.width ? ((event.clientX - rect.left) / rect.width) * 100 : 50;
+
+      motion.targetPosition = clamp(relativeX, 12, 88);
+      motion.targetDarkness = clamp(speed / 88, 0, 1);
+      motion.targetReflection = clamp(speed / 160, 0, 0.42);
+      motion.previous.x = event.clientX;
+      motion.previous.y = event.clientY;
+      motion.lastMove = performance.now();
+    };
+
+    const handleTouchMove = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+
+      handlePointerMove({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+      });
+    };
+
+    const animate = (time) => {
+      const idle = time - motion.lastMove;
+      const isIdle = idle > 170;
+
+      motion.targetDarkness = isIdle ? 0 : motion.targetDarkness;
+      motion.targetReflection = isIdle ? 0 : motion.targetReflection;
+      motion.position = lerp(motion.position, isIdle ? 50 : motion.targetPosition, 0.075);
+      motion.darkness = lerp(motion.darkness, motion.targetDarkness, 0.08);
+      motion.reflection = lerp(motion.reflection, motion.targetReflection, 0.075);
+
+      mark.style.setProperty('--name-gradient-position', `${motion.position.toFixed(1)}%`);
+      mark.style.setProperty('--name-darkness', motion.darkness.toFixed(3));
+      mark.style.setProperty('--name-reflection-opacity', motion.reflection.toFixed(3));
+
+      frameId = window.requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    frameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ' || event.code === 'Space') {
+      event.preventDefault();
+      onEnter();
+    }
+  };
+
+  return (
+    <section
+      className={`landing-intro${isExiting ? ' is-exiting' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label="进入刘国煜个人作品集"
+      onClick={onEnter}
+      onKeyDown={handleKeyDown}
+    >
+      <GlassSignatureLine nameRef={nameRef} />
+      <div className="landing-mark" ref={markRef} aria-hidden="true">
+        <h1 ref={nameRef}>刘国煜</h1>
+      </div>
+    </section>
+  );
+}
+
+function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
+  const svgRef = useRef(null);
+  const gradientRef = useRef(null);
+  const midStopRef = useRef(null);
+  const highlightStopRef = useRef(null);
+  const glowPathRef = useRef(null);
+  const bodyPathRef = useRef(null);
+  const highlightPathRef = useRef(null);
+
+  useEffect(() => {
+    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const motion = {
+      current: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
+      target: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
+      previous: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
+      speed: 0,
+      angle: 0,
+      lastMove: 0,
+      visible: isCoarsePointer ? 0.42 : 0,
+    };
+    let frameId = 0;
+
+    const setPath = (path) => {
+      [glowPathRef.current, bodyPathRef.current, highlightPathRef.current].forEach((node) => {
+        node?.setAttribute('d', path);
+      });
+    };
+
+    const updateGradient = (dx, dy, speed, isHovering) => {
+      const intensity = clamp(speed / 42, 0, 1);
+      const angle = Math.atan2(dy || 0.01, dx || 0.01) * (180 / Math.PI);
+      const midOffset = 38 + intensity * 13;
+      const highlightOffset = 58 + intensity * 18;
+      const highlightOpacity = (isHovering ? 0.74 : 0.42) + intensity * 0.26;
+
+      motion.angle = lerp(motion.angle, angle, 0.14);
+      gradientRef.current?.setAttribute('gradientTransform', `rotate(${motion.angle.toFixed(1)} 0.5 0.5)`);
+      midStopRef.current?.setAttribute('offset', `${midOffset.toFixed(1)}%`);
+      highlightStopRef.current?.setAttribute('offset', `${highlightOffset.toFixed(1)}%`);
+      svgRef.current?.style.setProperty('--directory-highlight-opacity', String(clamp(highlightOpacity, 0.38, 0.92)));
+    };
+
+    const buildFollowPath = (time) => {
+      motion.current.x = lerp(motion.current.x, motion.target.x, 0.12);
+      motion.current.y = lerp(motion.current.y, motion.target.y, 0.12);
+
+      const dx = motion.current.x - motion.previous.x;
+      const dy = motion.current.y - motion.previous.y;
+      const distance = Math.hypot(dx, dy);
+      motion.speed = lerp(motion.speed, distance, 0.24);
+
+      const angle = Math.atan2(dy || 0.01, dx || 0.01);
+      const normal = angle + Math.PI / 2;
+      const length = clamp(72 + motion.speed * 13, 82, 230);
+      const tail = {
+        x: motion.current.x - Math.cos(angle) * length,
+        y: motion.current.y - Math.sin(angle) * length,
+      };
+      const head = {
+        x: motion.current.x + Math.cos(angle) * 26,
+        y: motion.current.y + Math.sin(angle) * 26,
+      };
+      const bend = clamp(18 + motion.speed * 3.4, 18, 62);
+      const control = {
+        x: (tail.x + head.x) / 2 + Math.cos(normal) * bend,
+        y: (tail.y + head.y) / 2 + Math.sin(normal) * bend,
+      };
+
+      const idle = time - motion.lastMove;
+      motion.visible = lerp(motion.visible, idle > 1300 ? 0.18 : 0.72, 0.09);
+      motion.previous.x = motion.current.x;
+      motion.previous.y = motion.current.y;
+
+      updateGradient(dx, dy, motion.speed, false);
+      return `M ${tail.x.toFixed(1)} ${tail.y.toFixed(1)} Q ${control.x.toFixed(1)} ${control.y.toFixed(1)} ${head.x.toFixed(1)} ${head.y.toFixed(1)}`;
+    };
+
+    const buildHoverPath = () => {
+      const label = hoveredItemRef.current?.querySelector('.directory-label');
+      const rect = label?.getBoundingClientRect();
+
+      if (!rect?.width || !rect?.height) return null;
+
+      const margin = clamp(rect.width * 0.04, 18, 58);
+      const startX = clamp(rect.left + margin, 34, window.innerWidth - 90);
+      const endX = clamp(rect.right + clamp(rect.width * 0.035, 22, 70), startX + 120, window.innerWidth - 42);
+      const y = clamp(rect.bottom + clamp(window.innerHeight * 0.026, 18, 34), 58, window.innerHeight - 42);
+      const lift = clamp(rect.height * 0.18, 22, 48);
+      const hook = clamp(rect.height * 0.1, 16, 34);
+      const dx = endX - startX;
+
+      motion.current.x = lerp(motion.current.x, endX, 0.1);
+      motion.current.y = lerp(motion.current.y, y, 0.1);
+      motion.speed = lerp(motion.speed, 14, 0.08);
+      motion.visible = lerp(motion.visible, 0.88, 0.12);
+
+      updateGradient(dx, -lift, 24, true);
+      return `M ${startX.toFixed(1)} ${y.toFixed(1)} C ${(startX + dx * 0.32).toFixed(1)} ${(y + hook).toFixed(1)}, ${(startX + dx * 0.74).toFixed(1)} ${(y - lift).toFixed(1)}, ${endX.toFixed(1)} ${(y - 4).toFixed(1)}`;
+    };
+
+    const handlePointerMove = (event) => {
+      if (isCoarsePointer) return;
+
+      motion.target.x = event.clientX + 22;
+      motion.target.y = event.clientY + 16;
+      motion.lastMove = performance.now();
+    };
+
+    const handleTouch = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+
+      motion.target.x = touch.clientX + 16;
+      motion.target.y = touch.clientY + 14;
+      motion.lastMove = performance.now();
+      motion.visible = 0.56;
+    };
+
+    const animate = (time) => {
+      const hoverPath = !isCoarsePointer ? buildHoverPath() : null;
+      const recentTouch = isCoarsePointer && time - motion.lastMove < 1100;
+      const path =
+        hoverPath ||
+        (isCoarsePointer && !recentTouch
+          ? `M ${(window.innerWidth * 0.18).toFixed(1)} ${(window.innerHeight * 0.58).toFixed(1)} C ${(window.innerWidth * 0.36).toFixed(1)} ${(window.innerHeight * 0.54).toFixed(1)}, ${(window.innerWidth * 0.58).toFixed(1)} ${(window.innerHeight * 0.62).toFixed(1)}, ${(window.innerWidth * 0.78).toFixed(1)} ${(window.innerHeight * 0.56).toFixed(1)}`
+          : buildFollowPath(time));
+
+      setPath(path);
+      if (svgRef.current) {
+        svgRef.current.style.opacity = String(motion.visible);
+      }
+
+      frameId = window.requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    scrollerRef.current?.addEventListener('touchmove', handleTouch, { passive: true });
+    frameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      scrollerRef.current?.removeEventListener('touchmove', handleTouch);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [hoveredItemRef, scrollerRef]);
+
+  return (
+    <svg className="directory-glass-line" ref={svgRef} aria-hidden="true">
+      <defs>
+        <linearGradient id="directoryBlueGlassStroke" ref={gradientRef} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(6, 59, 142, 0)" />
+          <stop offset="16%" stopColor="rgba(6, 59, 142, 0.58)" />
+          <stop ref={midStopRef} offset="44%" stopColor="rgba(22, 121, 211, 0.82)" />
+          <stop ref={highlightStopRef} offset="68%" stopColor="rgba(145, 221, 255, 0.92)" />
+          <stop offset="100%" stopColor="rgba(99, 200, 255, 0)" />
+        </linearGradient>
+        <linearGradient id="directoryBlueGlassHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(10, 78, 174, 0)" />
+          <stop offset="42%" stopColor="rgba(99, 200, 255, 0.58)" />
+          <stop offset="58%" stopColor="rgba(255, 255, 255, 0.78)" />
+          <stop offset="100%" stopColor="rgba(47, 151, 229, 0)" />
+        </linearGradient>
+        <filter id="directoryBlueGlassBlur" x="-18%" y="-90%" width="136%" height="280%">
+          <feGaussianBlur stdDeviation="4.2" />
+        </filter>
+      </defs>
+      <path className="directory-glass-glow" ref={glowPathRef} />
+      <path className="directory-glass-body" ref={bodyPathRef} />
+      <path className="directory-glass-highlight" ref={highlightPathRef} />
+    </svg>
+  );
+}
+
+function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
+  const [isHoverReady, setIsHoverReady] = useState(false);
+  const scrollerRef = useRef(null);
+  const itemRefs = useRef([]);
+  const hoveredItemRef = useRef(null);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return undefined;
+
+    let frameId = 0;
+    const gray = [168, 165, 161];
+    const ink = [17, 17, 17];
+
+    const updateItemFocus = () => {
+      frameId = 0;
+      const viewportCenter = scroller.getBoundingClientRect().top + scroller.clientHeight / 2;
+      const focusRange = scroller.clientHeight * 0.54;
+
+      itemRefs.current.forEach((item) => {
+        if (!item) return;
+
+        const rect = item.getBoundingClientRect();
+        const itemCenter = rect.top + rect.height / 2;
+        const focus = clamp(1 - Math.abs(viewportCenter - itemCenter) / focusRange, 0, 1);
+
+        item.style.setProperty('--focus', focus.toFixed(3));
+        item.style.setProperty('--focus-ink', mixRgb(gray, ink, focus * 0.86));
+        item.classList.toggle('is-near-center', focus > 0.58);
+      });
+    };
+
+    const requestFocusUpdate = () => {
+      if (!frameId) frameId = window.requestAnimationFrame(updateItemFocus);
+    };
+
+    scroller.scrollTop = restoreScrollTop;
+    updateItemFocus();
+    scroller.addEventListener('scroll', requestFocusUpdate, { passive: true });
+    window.addEventListener('resize', requestFocusUpdate);
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      scroller.removeEventListener('scroll', requestFocusUpdate);
+      window.removeEventListener('resize', requestFocusUpdate);
+    };
+  }, [restoreScrollTop]);
+
+  const handleSelect = (itemId) => {
+    onSelect(itemId, scrollerRef.current?.scrollTop ?? 0);
+  };
+
+  return (
+    <nav
+      className={`directory-page${isLeaving ? ' is-leaving' : ''}${
+        isHoverReady ? ' is-hover-ready' : ''
+      }`}
+      aria-label="Portfolio index"
+      ref={scrollerRef}
+      onMouseMove={() => setIsHoverReady(true)}
+    >
+      <DirectoryGlassLine scrollerRef={scrollerRef} hoveredItemRef={hoveredItemRef} />
+      <div className="directory-list">
+        {directoryItems.map((item, index) => (
+          <button
+            className={`directory-item${selectedId === item.id ? ' is-selected' : ''}`}
+            type="button"
+            key={item.id}
+            ref={(node) => {
+              itemRefs.current[index] = node;
+            }}
+            style={{ '--item-offset': directoryOffsets[index] }}
+            onPointerEnter={(event) => {
+              hoveredItemRef.current = event.currentTarget;
+            }}
+            onPointerLeave={() => {
+              hoveredItemRef.current = null;
+            }}
+            onFocus={(event) => {
+              hoveredItemRef.current = event.currentTarget;
+            }}
+            onBlur={() => {
+              hoveredItemRef.current = null;
+            }}
+            onClick={() => handleSelect(item.id)}
+          >
+            <span className="directory-label">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function DetailShell({ section, children, onBack }) {
+  return (
+    <main className="detail-page">
+      <button className="back-button" type="button" onClick={onBack}>
+        INDEX
+      </button>
+      <section className="detail-shell" aria-labelledby={`${section}-title`}>
+        {children}
+      </section>
+    </main>
+  );
+}
+
+function ChipList({ items }) {
+  return (
+    <div className="chip-list">
+      {items.map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
+function MetricGrid({ items }) {
+  return (
+    <div className="metric-grid">
+      {items.map((item) => (
+        <div className="metric-card" key={`${item.value}-${item.label}`}>
+          <strong>{item.value}</strong>
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OverviewDetail({ onBack }) {
+  return (
+    <DetailShell section="overview" onBack={onBack}>
+      <div className="profile-detail-grid">
+        <div className="profile-copy">
+          <p className="detail-kicker">OVERVIEW</p>
+          <h1 id="overview-title">视觉设计师 / AI 设计师 / 品牌设计师</h1>
+          <p>
+            我以视觉设计为底层语言，把 AI 创作、品牌表达、内容策划和可浏览原型连接成完整的设计生产流程。
+          </p>
+          <p>
+            当前作品集覆盖 AI 网页原型、AI 漫剧分镜提示词、新媒体账号运营、公众号图文创作和短视频策划。核心能力集中在视觉表达、内容结构和 AI 辅助设计落地。
+          </p>
+          <ChipList items={jobDirections} />
+          <MetricGrid items={stats} />
+        </div>
+        <figure className="portrait-frame detail-portrait">
+          <img src={publicAsset('/assets/portrait.webp')} alt="刘国煜人物照片" />
+        </figure>
+      </div>
+    </DetailShell>
+  );
+}
+
+function SkillsDetail({ onBack }) {
+  return (
+    <DetailShell section="skills" onBack={onBack}>
+      <div className="detail-heading">
+        <p className="detail-kicker">SKILLS</p>
+        <h1 id="skills-title">职业技能、工具和能力结构</h1>
+        <p>
+          能从主题定位、内容结构、视觉执行到数据复盘完成连续工作，也能把 AI 工具纳入设计和内容生产流程。
+        </p>
+      </div>
+      <div className="strength-grid detail-strength-grid">
+        {strengths.map((item, index) => (
+          <article className="strength-card" key={item.title}>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <h2>{item.title}</h2>
+            <p>{item.text}</p>
+          </article>
+        ))}
+      </div>
+      <div className="tool-panel">
+        <h2>工具栈</h2>
+        <ChipList items={tools} />
+      </div>
+    </DetailShell>
+  );
+}
+
+function ProjectDetail({ id, onBack }) {
+  const project = projects[id];
+
+  return (
+    <DetailShell section={id} onBack={onBack}>
+      <article className="project-detail">
+        <div className="detail-heading">
+          <p className="detail-kicker">{project.eyebrow}</p>
+          <h1 id={`${id}-title`}>{project.title}</h1>
+          <p>{project.summary}</p>
+        </div>
+
+        <div className="project-detail-grid">
+          <figure className="project-detail-image">
+            <img src={publicAsset(project.image)} alt={`${project.title}作品图`} />
+          </figure>
+          <div className="project-detail-side">
+            <div>
+              <h2>我的职责</h2>
+              <ChipList items={project.roles} />
+            </div>
+            <div>
+              <h2>使用工具</h2>
+              <ChipList items={project.tools} />
+            </div>
+            {project.metrics ? <MetricGrid items={project.metrics} /> : null}
+          </div>
+        </div>
+
+        <div className="process-section">
+          <h2>过程</h2>
+          <ol>
+            {project.process.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="result-panel">
+          <span>RESULT</span>
+          <p>{project.result}</p>
+        </div>
+      </article>
+    </DetailShell>
+  );
+}
+
+function AboutDetail({ onBack }) {
+  return (
+    <DetailShell section="about" onBack={onBack}>
+      <div className="about-contact-page">
+        <div className="profile-copy about-contact-copy">
+          <p className="detail-kicker">ABOUT</p>
+          <h1 id="about-title">联系与求职方向</h1>
+          <p>期待新媒体运营、内容策划、图文编辑、短视频策划、AI 创作、网页、剪辑、拍摄相关机会。</p>
+          <p>我能把内容想法整理成清晰的视觉方案，也能把数据反馈转化为下一轮内容优化方向。</p>
+        </div>
+        <div className="about-contact-grid">
+          <a className="about-contact-link" href={`mailto:${contact.email}`}>
+            <span>Email</span>
+            <strong>{contact.email}</strong>
+          </a>
+          <a className="about-contact-link" href={`tel:${contact.phone}`}>
+            <span>Phone</span>
+            <strong>{contact.phone}</strong>
+          </a>
+          <a className="about-contact-link" href={resumeHref} download>
+            <span>Resume</span>
+            <strong>下载简历 PDF</strong>
+          </a>
+        </div>
+        <div className="tool-panel about-direction-panel">
+          <h2>求职方向</h2>
+          <ChipList items={jobDirections} />
+        </div>
+      </div>
+    </DetailShell>
+  );
+}
+
+function DetailPage({ activeSection, onBack }) {
+  if (activeSection === 'overview') return <OverviewDetail onBack={onBack} />;
+  if (activeSection === 'skills') return <SkillsDetail onBack={onBack} />;
+  if (activeSection === 'about') return <AboutDetail onBack={onBack} />;
+
+  return <ProjectDetail id={activeSection} onBack={onBack} />;
+}
+
+function PortfolioPage({ isActive, onReturnHome }) {
+  const [activeSection, setActiveSection] = useState(null);
+  const [selectedDirectoryId, setSelectedDirectoryId] = useState(null);
+  const [isDirectoryLeaving, setIsDirectoryLeaving] = useState(false);
+  const [restoreDirectoryScrollTop, setRestoreDirectoryScrollTop] = useState(0);
+
+  const openSection = (sectionId, directoryScrollTop = 0) => {
+    if (isDirectoryLeaving) return;
+
+    setRestoreDirectoryScrollTop(directoryScrollTop);
+    setSelectedDirectoryId(sectionId);
+    setIsDirectoryLeaving(true);
+    window.setTimeout(() => {
+      if (sectionId === 'home') {
+        setActiveSection(null);
+        setIsDirectoryLeaving(false);
+        setSelectedDirectoryId(null);
+        onReturnHome();
+        return;
+      }
+
+      setActiveSection(sectionId);
+      setIsDirectoryLeaving(false);
+      setSelectedDirectoryId(null);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }, DIRECTORY_EXIT_DURATION);
+  };
+
+  const returnToDirectory = () => {
+    setActiveSection(null);
+  };
+
+  return (
+    <div
+      className={`portfolio-page${isActive ? ' is-active' : ''}`}
+      aria-hidden={!isActive}
+      inert={!isActive}
+    >
+      {activeSection ? (
+        <DetailPage activeSection={activeSection} onBack={returnToDirectory} />
+      ) : (
+        <DirectoryPage
+          isLeaving={isDirectoryLeaving}
+          selectedId={selectedDirectoryId}
+          restoreScrollTop={restoreDirectoryScrollTop}
+          onSelect={openSection}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [introState, setIntroState] = useState('landing');
+  const isPortfolioActive = introState !== 'landing';
+  const isIntroExiting = introState === 'exiting';
+
+  const enterPortfolio = () => {
+    if (introState !== 'landing') return;
+
+    setIntroState('exiting');
+    window.setTimeout(() => {
+      setIntroState('entered');
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }, INTRO_EXIT_DURATION);
+  };
+
+  const returnHome = () => {
+    setIntroState('landing');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  return (
+    <>
+      {introState !== 'entered' && (
+        <LandingIntro isExiting={isIntroExiting} onEnter={enterPortfolio} />
+      )}
+      <PortfolioPage isActive={isPortfolioActive} onReturnHome={returnHome} />
+    </>
+  );
+}
