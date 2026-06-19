@@ -805,8 +805,9 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
 }
 
 function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
-  const [isHoverReady, setIsHoverReady] = useState(false);
   const scrollerRef = useRef(null);
+  const listRef = useRef(null);
+  const spacerRef = useRef(null);
   const itemRefs = useRef([]);
   const hoveredItemRef = useRef(null);
 
@@ -819,11 +820,16 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
     const AUTO_SCROLL_MAX_SPEED = 16;
     const AUTO_SCROLL_MIN_SPEED = 0.55;
     const AUTO_SCROLL_EASE = 0.08;
-    const DIRECTORY_MOUSE_FLOAT = 0.16;
-    const DIRECTORY_SCROLL_INERTIA = 0.82;
-    const DIRECTORY_FLOAT_MAX = 22;
     const isAutoScrollEnabled =
       AUTO_SCROLL_ENABLED && !window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const SMOOTH_SCROLL_EASE = isAutoScrollEnabled ? 0.095 : 1;
+    const ITEM_LERP = 0.13;
+    const DIRECTORY_MOUSE_FLOAT = 0.16;
+    const DIRECTORY_SCROLL_INERTIA = 0.82;
+    const DIRECTORY_FLOAT_MAX = 14;
+    const list = listRef.current;
+    const spacer = spacerRef.current;
+    const itemState = new WeakMap();
     let frameId = 0;
     const gray = [168, 165, 161];
     const ink = [17, 17, 17];
@@ -835,8 +841,16 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
       lastMouseMove: 0,
       isPointerInside: false,
       autoScrollSpeed: 0,
+      currentScroll: restoreScrollTop,
       previousScrollTop: restoreScrollTop,
       scrollVelocity: 0,
+    };
+
+    const syncScrollSpace = () => {
+      if (!list || !spacer) return;
+
+      const contentHeight = list.scrollHeight;
+      spacer.style.height = `${Math.max(contentHeight, scroller.clientHeight + 1)}px`;
     };
 
     const getAutoScrollTarget = () => {
@@ -869,13 +883,19 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
         motion.autoScrollSpeed = 0;
       }
 
+      const targetScroll = scroller.scrollTop;
+      motion.currentScroll = lerp(motion.currentScroll, targetScroll, SMOOTH_SCROLL_EASE);
+      if (list) {
+        list.style.setProperty('--directory-visual-scroll', `${motion.currentScroll.toFixed(2)}px`);
+      }
+
       const viewportCenter = scroller.getBoundingClientRect().top + scroller.clientHeight / 2;
       const centerRange = scroller.clientHeight / 2;
       const mouseActive = performance.now() - motion.lastMouseMove < 1200;
-      const scrollDelta = scroller.scrollTop - motion.previousScrollTop;
+      const scrollDelta = targetScroll - motion.previousScrollTop;
 
       motion.scrollVelocity = lerp(motion.scrollVelocity, scrollDelta, 0.16);
-      motion.previousScrollTop = scroller.scrollTop;
+      motion.previousScrollTop = targetScroll;
       motion.mouseY = lerp(motion.mouseY, motion.targetMouseY, 0.14);
       motion.mouseVelocityY = lerp(motion.mouseVelocityY, motion.mouseY - motion.lastMouseY, 0.18);
       motion.lastMouseY = motion.mouseY;
@@ -889,24 +909,49 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
         const mouseDistance = Math.abs(itemCenter - motion.mouseY);
         const mouseProgress = mouseActive ? clamp(1 - mouseDistance / (scroller.clientHeight * 0.34), 0, 1) : 0;
         const clarity = clamp(Math.max(centerProgress, mouseProgress * 0.78), 0, 1);
-        const opacity = clamp(0.18 + centerProgress * 0.72 + mouseProgress * 0.22, 0.18, 1);
-        const scale = clamp(0.96 + centerProgress * 0.04 + mouseProgress * 0.018, 0.96, 1.04);
-        const blur = clamp((1 - clarity) * 1.2, 0, 1.2);
-        const floatY = clamp(
+        const hoverTarget = hoveredItemRef.current === item ? 1 : 0;
+        const state =
+          itemState.get(item) ||
+          {
+            hover: 0,
+            opacity: 0.22,
+            scale: 0.98,
+            blur: 0.8,
+            floatY: 0,
+            wakeX: 0,
+            color: 0,
+            letter: 0,
+          };
+        const targetOpacity = clamp(0.22 + centerProgress * 0.68 + mouseProgress * 0.2 + hoverTarget * 0.18, 0.22, 1);
+        const targetScale = clamp(0.975 + centerProgress * 0.025 + mouseProgress * 0.012 + hoverTarget * 0.025, 0.975, 1.04);
+        const targetBlur = clamp((1 - clarity) * 0.95, 0, 0.95);
+        const targetFloatY = clamp(
           mouseProgress * motion.mouseVelocityY * DIRECTORY_MOUSE_FLOAT -
             motion.scrollVelocity * DIRECTORY_SCROLL_INERTIA,
           -DIRECTORY_FLOAT_MAX,
           DIRECTORY_FLOAT_MAX,
         );
-        const wakeX = clamp(centerProgress * 8 + mouseProgress * 8, 0, 14);
-        const colorProgress = clamp(centerProgress * 0.72 + mouseProgress * 0.38, 0, 0.9);
+        const targetWakeX = clamp(mouseProgress * 5 + hoverTarget * 11, 0, 12);
+        const targetColor = clamp(centerProgress * 0.62 + mouseProgress * 0.34 + hoverTarget * 0.48, 0, 0.94);
+        const targetLetter = hoverTarget * 0.022;
 
-        item.style.setProperty('--item-opacity', opacity.toFixed(3));
-        item.style.setProperty('--item-scale', scale.toFixed(3));
-        item.style.setProperty('--item-blur', `${blur.toFixed(2)}px`);
-        item.style.setProperty('--item-float-y', `${floatY.toFixed(1)}px`);
-        item.style.setProperty('--item-wake-x', `${wakeX.toFixed(1)}px`);
-        item.style.setProperty('--focus-ink', mixRgb(gray, ink, colorProgress));
+        state.hover = lerp(state.hover, hoverTarget, ITEM_LERP);
+        state.opacity = lerp(state.opacity, targetOpacity, ITEM_LERP);
+        state.scale = lerp(state.scale, targetScale, ITEM_LERP);
+        state.blur = lerp(state.blur, targetBlur, ITEM_LERP);
+        state.floatY = lerp(state.floatY, targetFloatY, ITEM_LERP);
+        state.wakeX = lerp(state.wakeX, targetWakeX, ITEM_LERP);
+        state.color = lerp(state.color, targetColor, ITEM_LERP);
+        state.letter = lerp(state.letter, targetLetter, ITEM_LERP);
+        itemState.set(item, state);
+
+        item.style.setProperty('--item-opacity', state.opacity.toFixed(3));
+        item.style.setProperty('--item-scale', state.scale.toFixed(3));
+        item.style.setProperty('--item-blur', `${state.blur.toFixed(2)}px`);
+        item.style.setProperty('--item-float-y', `${state.floatY.toFixed(1)}px`);
+        item.style.setProperty('--item-wake-x', `${state.wakeX.toFixed(1)}px`);
+        item.style.setProperty('--item-letter-shift', `${state.letter.toFixed(4)}em`);
+        item.style.setProperty('--focus-ink', mixRgb(gray, ink, state.color));
         item.classList.toggle('is-near-center', clarity > 0.58);
       });
 
@@ -923,16 +968,33 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
       motion.isPointerInside = false;
     };
 
+    const handleWheel = (event) => {
+      if (!isAutoScrollEnabled) return;
+
+      event.preventDefault();
+      scroller.scrollTop += event.deltaY;
+    };
+
+    const handleResize = () => {
+      syncScrollSpace();
+    };
+
     scroller.scrollTop = restoreScrollTop;
+    motion.currentScroll = restoreScrollTop;
     motion.previousScrollTop = restoreScrollTop;
+    syncScrollSpace();
     scroller.addEventListener('pointermove', handlePointerMove, { passive: true });
     scroller.addEventListener('pointerleave', handlePointerLeave, { passive: true });
+    scroller.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('resize', handleResize);
     frameId = window.requestAnimationFrame(updateItemMotion);
 
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
       scroller.removeEventListener('pointermove', handlePointerMove);
       scroller.removeEventListener('pointerleave', handlePointerLeave);
+      scroller.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('resize', handleResize);
     };
   }, [restoreScrollTop]);
 
@@ -942,15 +1004,12 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
 
   return (
     <nav
-      className={`directory-page${isLeaving ? ' is-leaving' : ''}${
-        isHoverReady ? ' is-hover-ready' : ''
-      }`}
+      className={`directory-page${isLeaving ? ' is-leaving' : ''}`}
       aria-label="Portfolio index"
       ref={scrollerRef}
-      onMouseMove={() => setIsHoverReady(true)}
     >
       <DirectoryGlassLine scrollerRef={scrollerRef} hoveredItemRef={hoveredItemRef} />
-      <div className="directory-list">
+      <div className="directory-list" ref={listRef}>
         {directoryItems.map((item, index) => (
           <button
             className={`directory-item${selectedId === item.id ? ' is-selected' : ''}`}
@@ -959,7 +1018,6 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
             ref={(node) => {
               itemRefs.current[index] = node;
             }}
-            style={{ '--item-offset': directoryOffsets[index] }}
             onPointerEnter={(event) => {
               hoveredItemRef.current = event.currentTarget;
             }}
@@ -978,6 +1036,7 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
           </button>
         ))}
       </div>
+      <div className="directory-scroll-space" ref={spacerRef} aria-hidden="true" />
     </nav>
   );
 }
