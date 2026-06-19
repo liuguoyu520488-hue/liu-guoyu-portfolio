@@ -199,20 +199,46 @@ function mixRgb(from, to, amount) {
 
 function GlassSignatureLine({ nameRef }) {
   const svgRef = useRef(null);
+  const gradientRef = useRef(null);
+  const midStopRef = useRef(null);
+  const highlightStopRef = useRef(null);
   const glowPathRef = useRef(null);
   const bodyPathRef = useRef(null);
   const highlightPathRef = useRef(null);
 
   useEffect(() => {
-    const motion = {
-      mode: 'orbit',
-      current: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-      target: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-      previous: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-      speed: 0,
-      lastMove: 0,
+    const snakeConfig = {
+      segmentCount: 22,
+      minActiveSegments: 7,
+      maxActiveSegments: 21,
+      followFactor: 0.135,
+      bodyFollowFactor: 0.25,
+      minSpacing: 9,
+      maxSpacing: 18,
+      idleWave: 1.6,
+      activeWave: 18,
+      waveFrequency: 0.0048,
+      wavePhase: 0.78,
+      pointerOffset: 20,
     };
     const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const origin = { x: window.innerWidth * 0.68, y: window.innerHeight * 0.52 };
+    const segments = Array.from({ length: snakeConfig.segmentCount }, (_, index) => ({
+      x: origin.x - index * snakeConfig.minSpacing,
+      y: origin.y + Math.sin(index * 0.7) * 5,
+    }));
+    const motion = {
+      mode: isCoarsePointer ? 'orbit' : 'follow',
+      target: { ...origin },
+      previousHead: { ...origin },
+      previousPointer: { ...origin },
+      eventTime: performance.now(),
+      lastMove: performance.now(),
+      pointerSpeed: 0,
+      displaySpeed: 0,
+      gradientAngle: 0,
+      visible: 0.42,
+    };
     let frameId = 0;
 
     const getNameRect = () => {
@@ -233,60 +259,114 @@ function GlassSignatureLine({ nameRef }) {
       return x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
     };
 
-    const pointOnOrbit = (rect, angle, time, phase = 0) => {
+    const pointOnOrbit = (time) => {
+      const rect = getNameRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
-      const radiusX = rect.width / 2 + clamp(window.innerWidth * 0.045, 40, 70);
-      const radiusY = rect.height / 2 + clamp(window.innerHeight * 0.055, 24, 45);
-      const wobble = 1 + Math.sin(time * 0.00135 + phase) * 0.035;
+      const radiusX = rect.width / 2 + clamp(window.innerWidth * 0.05, 44, 78);
+      const radiusY = rect.height / 2 + clamp(window.innerHeight * 0.058, 28, 52);
+      const angle = time * 0.00082 + Math.sin(time * 0.00042) * 0.22;
+      const organicWobble = 1 + Math.sin(time * 0.00115) * 0.045;
 
       return {
-        x: centerX + Math.cos(angle) * radiusX * wobble,
-        y: centerY + Math.sin(angle) * radiusY * (1 + Math.cos(time * 0.0011 + phase) * 0.045),
+        x: centerX + Math.cos(angle) * radiusX * organicWobble,
+        y: centerY + Math.sin(angle) * radiusY * (1 + Math.cos(time * 0.001) * 0.04),
       };
     };
 
-    const buildOrbitPath = (time) => {
-      const rect = getNameRect();
-      const baseAngle = time * 0.00092 + Math.sin(time * 0.00055) * 0.18;
-      const p0 = pointOnOrbit(rect, baseAngle - 1.92, time, 0.2);
-      const p1 = pointOnOrbit(rect, baseAngle - 0.9, time, 1.3);
-      const p2 = pointOnOrbit(rect, baseAngle + 0.16, time, 2.4);
-      const p3 = pointOnOrbit(rect, baseAngle + 1.1, time, 3.1);
+    const updateGradient = (dx, dy, speedRatio) => {
+      const angle = Math.atan2(dy || 0.01, dx || 0.01) * (180 / Math.PI);
+      const midOffset = 36 + speedRatio * 12;
+      const highlightOffset = 56 + speedRatio * 18;
+      const highlightOpacity = 0.32 + speedRatio * 0.48;
 
-      return `M ${p0.x.toFixed(1)} ${p0.y.toFixed(1)} C ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}, ${p3.x.toFixed(1)} ${p3.y.toFixed(1)}`;
+      motion.gradientAngle = lerp(motion.gradientAngle, angle, 0.12);
+      gradientRef.current?.setAttribute('gradientTransform', `rotate(${motion.gradientAngle.toFixed(1)} 0.5 0.5)`);
+      midStopRef.current?.setAttribute('offset', `${midOffset.toFixed(1)}%`);
+      highlightStopRef.current?.setAttribute('offset', `${highlightOffset.toFixed(1)}%`);
+      svgRef.current?.style.setProperty('--landing-ribbon-highlight-opacity', String(clamp(highlightOpacity, 0.32, 0.82)));
     };
 
-    const buildFollowPath = () => {
-      motion.current.x = lerp(motion.current.x, motion.target.x, 0.11);
-      motion.current.y = lerp(motion.current.y, motion.target.y, 0.11);
+    const updateSnakeBody = (time, target, speedRatio) => {
+      const head = segments[0];
+      head.x = lerp(head.x, target.x, snakeConfig.followFactor);
+      head.y = lerp(head.y, target.y, snakeConfig.followFactor);
 
-      const dx = motion.current.x - motion.previous.x;
-      const dy = motion.current.y - motion.previous.y;
-      const distance = Math.hypot(dx, dy);
-      motion.speed = lerp(motion.speed, distance, 0.22);
+      const headDx = head.x - motion.previousHead.x;
+      const headDy = head.y - motion.previousHead.y;
+      const spacing = lerp(snakeConfig.minSpacing, snakeConfig.maxSpacing, speedRatio);
 
-      const length = clamp(44 + motion.speed * 9.5, 48, 138);
-      const angle = Math.atan2(dy || 0.01, dx || 0.01);
-      const normalAngle = angle + Math.PI / 2;
-      const tail = {
-        x: motion.current.x - Math.cos(angle) * length,
-        y: motion.current.y - Math.sin(angle) * length,
+      for (let index = 1; index < segments.length; index += 1) {
+        const previous = segments[index - 1];
+        const current = segments[index];
+        const dx = current.x - previous.x;
+        const dy = current.y - previous.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const targetX = previous.x + (dx / distance) * spacing;
+        const targetY = previous.y + (dy / distance) * spacing;
+        const localFollow = snakeConfig.bodyFollowFactor - index * 0.0035;
+
+        current.x = lerp(current.x, targetX, clamp(localFollow, 0.14, snakeConfig.bodyFollowFactor));
+        current.y = lerp(current.y, targetY, clamp(localFollow, 0.14, snakeConfig.bodyFollowFactor));
+      }
+
+      const activeSegments = Math.round(
+        lerp(snakeConfig.minActiveSegments, snakeConfig.maxActiveSegments, speedRatio),
+      );
+      const waveAmplitude = lerp(snakeConfig.idleWave, snakeConfig.activeWave, speedRatio);
+
+      const shaped = segments.slice(0, activeSegments).map((point, index, activePoints) => {
+        const next = activePoints[index - 1] || point;
+        const previous = activePoints[index + 1] || point;
+        const tangentX = next.x - previous.x || headDx || 1;
+        const tangentY = next.y - previous.y || headDy || 0;
+        const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+        const normalX = -tangentY / tangentLength;
+        const normalY = tangentX / tangentLength;
+        const tailFade = 1 - index / Math.max(activeSegments - 1, 1);
+        const wave = Math.sin(time * snakeConfig.waveFrequency + index * snakeConfig.wavePhase) * waveAmplitude;
+
+        return {
+          x: point.x + normalX * wave * tailFade,
+          y: point.y + normalY * wave * tailFade,
+        };
+      });
+
+      motion.previousHead.x = head.x;
+      motion.previousHead.y = head.y;
+
+      return {
+        points: shaped.reverse(),
+        headDx,
+        headDy,
       };
-      const head = {
-        x: motion.current.x + Math.cos(angle) * 18,
-        y: motion.current.y + Math.sin(angle) * 18,
-      };
-      const curve = clamp(10 + motion.speed * 2.2, 10, 34);
-      const control = {
-        x: (tail.x + head.x) / 2 + Math.cos(normalAngle) * curve,
-        y: (tail.y + head.y) / 2 + Math.sin(normalAngle) * curve,
-      };
+    };
 
-      motion.previous.x = motion.current.x;
-      motion.previous.y = motion.current.y;
+    const pointsToPath = (points) => {
+      if (points.length < 2) return '';
 
-      return `M ${tail.x.toFixed(1)} ${tail.y.toFixed(1)} Q ${control.x.toFixed(1)} ${control.y.toFixed(1)} ${head.x.toFixed(1)} ${head.y.toFixed(1)}`;
+      const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
+
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const p0 = points[index - 1] || points[index];
+        const p1 = points[index];
+        const p2 = points[index + 1];
+        const p3 = points[index + 2] || p2;
+        const c1 = {
+          x: p1.x + (p2.x - p0.x) / 6,
+          y: p1.y + (p2.y - p0.y) / 6,
+        };
+        const c2 = {
+          x: p2.x - (p3.x - p1.x) / 6,
+          y: p2.y - (p3.y - p1.y) / 6,
+        };
+
+        commands.push(
+          `C ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}, ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`,
+        );
+      }
+
+      return commands.join(' ');
     };
 
     const setGlassPath = (path, opacity) => {
@@ -301,28 +381,68 @@ function GlassSignatureLine({ nameRef }) {
     const handlePointerMove = (event) => {
       if (isCoarsePointer) return;
 
-      const isOverName = isInsideName(event.clientX, event.clientY);
-      motion.mode = isOverName ? 'orbit' : 'follow';
-      motion.target.x = event.clientX + 18;
-      motion.target.y = event.clientY + 14;
-      motion.lastMove = performance.now();
+      const now = performance.now();
+      const dx = event.clientX - motion.previousPointer.x;
+      const dy = event.clientY - motion.previousPointer.y;
+      const frameScale = 16.67 / Math.max(now - motion.eventTime, 8);
+      const pointerSpeed = Math.hypot(dx, dy) * frameScale;
+      const angle = Math.atan2(dy || 0.01, dx || 0.01);
+
+      motion.mode = isInsideName(event.clientX, event.clientY) ? 'orbit' : 'follow';
+      motion.target.x = event.clientX + Math.cos(angle) * snakeConfig.pointerOffset;
+      motion.target.y = event.clientY + Math.sin(angle) * snakeConfig.pointerOffset;
+      motion.pointerSpeed = clamp(pointerSpeed, 0, 78);
+      motion.previousPointer.x = event.clientX;
+      motion.previousPointer.y = event.clientY;
+      motion.eventTime = now;
+      motion.lastMove = now;
+    };
+
+    const handleTouchMove = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+
+      const now = performance.now();
+      const dx = touch.clientX - motion.previousPointer.x;
+      const dy = touch.clientY - motion.previousPointer.y;
+      const frameScale = 16.67 / Math.max(now - motion.eventTime, 8);
+      const pointerSpeed = Math.hypot(dx, dy) * frameScale;
+
+      motion.mode = 'follow';
+      motion.target.x = touch.clientX + 14;
+      motion.target.y = touch.clientY + 12;
+      motion.pointerSpeed = clamp(pointerSpeed, 0, 64);
+      motion.previousPointer.x = touch.clientX;
+      motion.previousPointer.y = touch.clientY;
+      motion.eventTime = now;
+      motion.lastMove = now;
     };
 
     const animate = (time) => {
       const idleTime = time - motion.lastMove;
-      const shouldOrbit = isCoarsePointer || motion.mode === 'orbit' || idleTime > 1800;
-      const path = shouldOrbit ? buildOrbitPath(time) : buildFollowPath();
-      const followFade = shouldOrbit ? 0.5 : clamp(0.62 - idleTime / 2600, 0.12, 0.62);
+      const isOrbitingName = motion.mode === 'orbit' || (isCoarsePointer && idleTime > 900);
+      const targetSpeed = idleTime > 120 ? 0 : motion.pointerSpeed;
+      motion.displaySpeed = lerp(motion.displaySpeed, targetSpeed, idleTime > 120 ? 0.035 : 0.16);
+      const movementRatio = clamp(motion.displaySpeed / 46, 0, 1);
+      const speedRatio = isOrbitingName ? Math.max(movementRatio, 0.42) : movementRatio;
+      const target = isOrbitingName ? pointOnOrbit(time) : motion.target;
+      const snake = updateSnakeBody(time, target, speedRatio);
+      const path = pointsToPath(snake.points);
+      const opacityTarget = isOrbitingName || idleTime < 1800 ? 0.72 : 0.4;
 
-      setGlassPath(path, followFade);
+      updateGradient(snake.headDx, snake.headDy, speedRatio);
+      motion.visible = lerp(motion.visible, opacityTarget, 0.08);
+      setGlassPath(path, motion.visible);
       frameId = window.requestAnimationFrame(animate);
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
     frameId = window.requestAnimationFrame(animate);
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('touchmove', handleTouchMove);
       window.cancelAnimationFrame(frameId);
     };
   }, [nameRef]);
@@ -330,21 +450,21 @@ function GlassSignatureLine({ nameRef }) {
   return (
     <svg className="glass-signature" ref={svgRef} aria-hidden="true">
       <defs>
-        <linearGradient id="glassRibbonStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(255, 255, 255, 0)" />
-          <stop offset="18%" stopColor="rgba(183, 232, 255, 0.48)" />
-          <stop offset="50%" stopColor="rgba(245, 253, 255, 0.78)" />
-          <stop offset="78%" stopColor="rgba(118, 204, 246, 0.5)" />
-          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+        <linearGradient id="glassRibbonStroke" ref={gradientRef} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="rgba(6, 59, 142, 0)" />
+          <stop offset="14%" stopColor="rgba(6, 59, 142, 0.42)" />
+          <stop ref={midStopRef} offset="40%" stopColor="rgba(22, 121, 211, 0.72)" />
+          <stop ref={highlightStopRef} offset="62%" stopColor="rgba(145, 221, 255, 0.82)" />
+          <stop offset="100%" stopColor="rgba(99, 200, 255, 0)" />
         </linearGradient>
         <linearGradient id="glassRibbonHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(255, 255, 255, 0)" />
-          <stop offset="42%" stopColor="rgba(255, 255, 255, 0.84)" />
-          <stop offset="66%" stopColor="rgba(198, 239, 255, 0.34)" />
-          <stop offset="100%" stopColor="rgba(255, 255, 255, 0)" />
+          <stop offset="0%" stopColor="rgba(10, 78, 174, 0)" />
+          <stop offset="44%" stopColor="rgba(99, 200, 255, 0.52)" />
+          <stop offset="58%" stopColor="rgba(255, 255, 255, 0.7)" />
+          <stop offset="100%" stopColor="rgba(47, 151, 229, 0)" />
         </linearGradient>
         <filter id="glassRibbonSoftBlur" x="-20%" y="-80%" width="140%" height="260%">
-          <feGaussianBlur stdDeviation="3.8" />
+          <feGaussianBlur stdDeviation="4.4" />
         </filter>
       </defs>
       <path className="glass-line-glow" ref={glowPathRef} />
