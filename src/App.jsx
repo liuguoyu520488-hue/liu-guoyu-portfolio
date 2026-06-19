@@ -582,6 +582,19 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
 
   useEffect(() => {
     const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const snakeConfig = {
+      segmentCount: 18,
+      minActiveSegments: 6,
+      maxActiveSegments: 17,
+      followFactor: 0.13,
+      bodyFollowFactor: 0.24,
+      minSpacing: 10,
+      maxSpacing: 18,
+      idleWave: 1.4,
+      activeWave: 14,
+      waveFrequency: 0.0052,
+      wavePhase: 0.78,
+    };
     const motion = {
       current: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
       target: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
@@ -591,6 +604,10 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
       lastMove: 0,
       visible: isCoarsePointer ? 0.42 : 0,
     };
+    const segments = Array.from({ length: snakeConfig.segmentCount }, (_, index) => ({
+      x: motion.current.x - index * snakeConfig.minSpacing,
+      y: motion.current.y + Math.sin(index * 0.7) * 4,
+    }));
     let frameId = 0;
 
     const setPath = (path) => {
@@ -613,42 +630,83 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
       svgRef.current?.style.setProperty('--directory-highlight-opacity', String(clamp(highlightOpacity, 0.38, 0.92)));
     };
 
-    const buildFollowPath = (time) => {
+    const pointsToPath = (points) => {
+      if (points.length < 2) return '';
+
+      const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const p0 = points[index - 1] || points[index];
+        const p1 = points[index];
+        const p2 = points[index + 1];
+        const p3 = points[index + 2] || p2;
+        const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
+        const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
+
+        commands.push(
+          `C ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}, ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`,
+        );
+      }
+
+      return commands.join(' ');
+    };
+
+    const buildFollowPath = (time, boost = 0) => {
       motion.current.x = lerp(motion.current.x, motion.target.x, 0.12);
       motion.current.y = lerp(motion.current.y, motion.target.y, 0.12);
 
       const dx = motion.current.x - motion.previous.x;
       const dy = motion.current.y - motion.previous.y;
       const distance = Math.hypot(dx, dy);
-      motion.speed = lerp(motion.speed, distance, 0.24);
+      motion.speed = lerp(motion.speed, Math.max(distance, boost), 0.24);
+      segments[0].x = motion.current.x;
+      segments[0].y = motion.current.y;
 
-      const angle = Math.atan2(dy || 0.01, dx || 0.01);
-      const normal = angle + Math.PI / 2;
-      const length = clamp(72 + motion.speed * 13, 82, 230);
-      const tail = {
-        x: motion.current.x - Math.cos(angle) * length,
-        y: motion.current.y - Math.sin(angle) * length,
-      };
-      const head = {
-        x: motion.current.x + Math.cos(angle) * 26,
-        y: motion.current.y + Math.sin(angle) * 26,
-      };
-      const bend = clamp(18 + motion.speed * 3.4, 18, 62);
-      const control = {
-        x: (tail.x + head.x) / 2 + Math.cos(normal) * bend,
-        y: (tail.y + head.y) / 2 + Math.sin(normal) * bend,
-      };
+      const speedRatio = clamp(motion.speed / 36, 0, 1);
+      const spacing = lerp(snakeConfig.minSpacing, snakeConfig.maxSpacing, speedRatio);
+
+      for (let index = 1; index < segments.length; index += 1) {
+        const previous = segments[index - 1];
+        const current = segments[index];
+        const segmentDx = current.x - previous.x;
+        const segmentDy = current.y - previous.y;
+        const segmentDistance = Math.hypot(segmentDx, segmentDy) || 1;
+        const targetX = previous.x + (segmentDx / segmentDistance) * spacing;
+        const targetY = previous.y + (segmentDy / segmentDistance) * spacing;
+        const localFollow = clamp(snakeConfig.bodyFollowFactor - index * 0.004, 0.13, snakeConfig.bodyFollowFactor);
+
+        current.x = lerp(current.x, targetX, localFollow);
+        current.y = lerp(current.y, targetY, localFollow);
+      }
 
       const idle = time - motion.lastMove;
       motion.visible = lerp(motion.visible, idle > 1300 ? 0.18 : 0.72, 0.09);
       motion.previous.x = motion.current.x;
       motion.previous.y = motion.current.y;
 
+      const activeSegments = Math.round(lerp(snakeConfig.minActiveSegments, snakeConfig.maxActiveSegments, speedRatio));
+      const waveAmplitude = lerp(snakeConfig.idleWave, snakeConfig.activeWave, speedRatio);
+      const shaped = segments.slice(0, activeSegments).map((point, index, activePoints) => {
+        const next = activePoints[index - 1] || point;
+        const previous = activePoints[index + 1] || point;
+        const tangentX = next.x - previous.x || dx || 1;
+        const tangentY = next.y - previous.y || dy || 0;
+        const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+        const normalX = -tangentY / tangentLength;
+        const normalY = tangentX / tangentLength;
+        const tailFade = 1 - index / Math.max(activeSegments - 1, 1);
+        const wave = Math.sin(time * snakeConfig.waveFrequency + index * snakeConfig.wavePhase) * waveAmplitude;
+
+        return {
+          x: point.x + normalX * wave * tailFade,
+          y: point.y + normalY * wave * tailFade,
+        };
+      });
+
       updateGradient(dx, dy, motion.speed, false);
-      return `M ${tail.x.toFixed(1)} ${tail.y.toFixed(1)} Q ${control.x.toFixed(1)} ${control.y.toFixed(1)} ${head.x.toFixed(1)} ${head.y.toFixed(1)}`;
+      return pointsToPath(shaped.reverse());
     };
 
-    const buildHoverPath = () => {
+    const buildHoverPath = (time) => {
       const label = hoveredItemRef.current?.querySelector('.directory-label');
       const rect = label?.getBoundingClientRect();
 
@@ -664,11 +722,13 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
 
       motion.current.x = lerp(motion.current.x, endX, 0.1);
       motion.current.y = lerp(motion.current.y, y, 0.1);
+      motion.target.x = endX;
+      motion.target.y = y;
       motion.speed = lerp(motion.speed, 14, 0.08);
       motion.visible = lerp(motion.visible, 0.88, 0.12);
 
       updateGradient(dx, -lift, 24, true);
-      return `M ${startX.toFixed(1)} ${y.toFixed(1)} C ${(startX + dx * 0.32).toFixed(1)} ${(y + hook).toFixed(1)}, ${(startX + dx * 0.74).toFixed(1)} ${(y - lift).toFixed(1)}, ${endX.toFixed(1)} ${(y - 4).toFixed(1)}`;
+      return buildFollowPath(time, 16);
     };
 
     const handlePointerMove = (event) => {
@@ -690,7 +750,7 @@ function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
     };
 
     const animate = (time) => {
-      const hoverPath = !isCoarsePointer ? buildHoverPath() : null;
+      const hoverPath = !isCoarsePointer ? buildHoverPath(time) : null;
       const recentTouch = isCoarsePointer && time - motion.lastMove < 1100;
       const path =
         hoverPath ||
@@ -757,38 +817,69 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
     let frameId = 0;
     const gray = [168, 165, 161];
     const ink = [17, 17, 17];
+    const motion = {
+      mouseY: scroller.clientHeight / 2,
+      targetMouseY: scroller.clientHeight / 2,
+      lastMouseY: scroller.clientHeight / 2,
+      mouseVelocityY: 0,
+      lastMouseMove: 0,
+      previousScrollTop: restoreScrollTop,
+      scrollVelocity: 0,
+    };
 
-    const updateItemFocus = () => {
-      frameId = 0;
+    const updateItemMotion = () => {
       const viewportCenter = scroller.getBoundingClientRect().top + scroller.clientHeight / 2;
-      const focusRange = scroller.clientHeight * 0.54;
+      const centerRange = scroller.clientHeight / 2;
+      const mouseActive = performance.now() - motion.lastMouseMove < 1200;
+      const scrollDelta = scroller.scrollTop - motion.previousScrollTop;
+
+      motion.scrollVelocity = lerp(motion.scrollVelocity, scrollDelta, 0.16);
+      motion.previousScrollTop = scroller.scrollTop;
+      motion.mouseY = lerp(motion.mouseY, motion.targetMouseY, 0.14);
+      motion.mouseVelocityY = lerp(motion.mouseVelocityY, motion.mouseY - motion.lastMouseY, 0.18);
+      motion.lastMouseY = motion.mouseY;
 
       itemRefs.current.forEach((item) => {
         if (!item) return;
 
         const rect = item.getBoundingClientRect();
         const itemCenter = rect.top + rect.height / 2;
-        const focus = clamp(1 - Math.abs(viewportCenter - itemCenter) / focusRange, 0, 1);
+        const centerProgress = clamp(1 - Math.abs(viewportCenter - itemCenter) / centerRange, 0, 1);
+        const mouseDistance = Math.abs(itemCenter - motion.mouseY);
+        const mouseProgress = mouseActive ? clamp(1 - mouseDistance / (scroller.clientHeight * 0.34), 0, 1) : 0;
+        const clarity = clamp(Math.max(centerProgress, mouseProgress * 0.78), 0, 1);
+        const opacity = clamp(0.18 + centerProgress * 0.72 + mouseProgress * 0.22, 0.18, 1);
+        const scale = clamp(0.96 + centerProgress * 0.04 + mouseProgress * 0.018, 0.96, 1.04);
+        const blur = clamp((1 - clarity) * 1.2, 0, 1.2);
+        const floatY = clamp(mouseProgress * motion.mouseVelocityY * 0.16 - motion.scrollVelocity * 0.82, -22, 22);
+        const wakeX = clamp(centerProgress * 8 + mouseProgress * 8, 0, 14);
+        const colorProgress = clamp(centerProgress * 0.72 + mouseProgress * 0.38, 0, 0.9);
 
-        item.style.setProperty('--focus', focus.toFixed(3));
-        item.style.setProperty('--focus-ink', mixRgb(gray, ink, focus * 0.86));
-        item.classList.toggle('is-near-center', focus > 0.58);
+        item.style.setProperty('--item-opacity', opacity.toFixed(3));
+        item.style.setProperty('--item-scale', scale.toFixed(3));
+        item.style.setProperty('--item-blur', `${blur.toFixed(2)}px`);
+        item.style.setProperty('--item-float-y', `${floatY.toFixed(1)}px`);
+        item.style.setProperty('--item-wake-x', `${wakeX.toFixed(1)}px`);
+        item.style.setProperty('--focus-ink', mixRgb(gray, ink, colorProgress));
+        item.classList.toggle('is-near-center', clarity > 0.58);
       });
+
+      frameId = window.requestAnimationFrame(updateItemMotion);
     };
 
-    const requestFocusUpdate = () => {
-      if (!frameId) frameId = window.requestAnimationFrame(updateItemFocus);
+    const handlePointerMove = (event) => {
+      motion.targetMouseY = event.clientY;
+      motion.lastMouseMove = performance.now();
     };
 
     scroller.scrollTop = restoreScrollTop;
-    updateItemFocus();
-    scroller.addEventListener('scroll', requestFocusUpdate, { passive: true });
-    window.addEventListener('resize', requestFocusUpdate);
+    motion.previousScrollTop = restoreScrollTop;
+    scroller.addEventListener('pointermove', handlePointerMove, { passive: true });
+    frameId = window.requestAnimationFrame(updateItemMotion);
 
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
-      scroller.removeEventListener('scroll', requestFocusUpdate);
-      window.removeEventListener('resize', requestFocusUpdate);
+      scroller.removeEventListener('pointermove', handlePointerMove);
     };
   }, [restoreScrollTop]);
 

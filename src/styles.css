@@ -19,8 +19,11 @@
 
   /* Directory tuning: change these values to adjust the index page. */
   --directory-bg: #f3f0ea;
-  --directory-title-size: clamp(88px, 10vw, 220px);
-  --directory-item-height: 52vh;
+  --directory-title-size: clamp(54px, 7vw, 132px);
+  --directory-item-height: 28vh;
+  --directory-min-opacity: 0.18;
+  --directory-max-blur: 1.2px;
+  --directory-float-max: 22px;
   --directory-side-gap: clamp(24px, 5.2vw, 96px);
   --directory-text: #a8a5a1;
   --directory-active: #111111;
@@ -280,11 +283,15 @@ img {
   display: flex;
   flex-direction: column;
   margin: 0 auto;
-  padding: 16vh var(--directory-side-gap) 24vh;
+  padding: 12vh var(--directory-side-gap) 16vh;
 }
 
 .directory-item {
-  --focus: 0;
+  --item-opacity: var(--directory-min-opacity);
+  --item-scale: 0.96;
+  --item-blur: var(--directory-max-blur);
+  --item-float-y: 0px;
+  --item-wake-x: 0px;
   --focus-ink: 168 165 161;
   position: relative;
   min-height: var(--directory-item-height);
@@ -299,15 +306,15 @@ img {
   cursor: pointer;
   text-align: left;
   text-transform: uppercase;
-  opacity: calc(0.54 + var(--focus) * 0.46);
-  transform: translateX(calc(var(--item-offset, 0vw) + var(--focus) * 12px))
-    scale(calc(1 + var(--focus) * 0.035));
+  opacity: var(--item-opacity);
+  filter: blur(var(--item-blur));
+  transform: translateX(calc(var(--item-offset, 0vw) + var(--item-wake-x)))
+    translateY(var(--item-float-y)) scale(var(--item-scale));
   transform-origin: left center;
   transition:
-    color var(--directory-hover-time) cubic-bezier(0.16, 1, 0.3, 1),
-    opacity var(--directory-hover-time) cubic-bezier(0.16, 1, 0.3, 1),
-    filter var(--directory-hover-time) cubic-bezier(0.16, 1, 0.3, 1),
-    transform var(--directory-hover-time) cubic-bezier(0.16, 1, 0.3, 1);
+    color 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .directory-label {
@@ -351,13 +358,15 @@ img {
   color: var(--directory-active);
   outline: none;
   opacity: 1;
-  transform: translateX(calc(var(--item-offset, 0vw) + 18px)) scale(1.048);
+  filter: blur(0);
+  transform: translateX(calc(var(--item-offset, 0vw) + 12px))
+    translateY(var(--item-float-y)) scale(1.038);
 }
 
 .directory-page.is-hover-ready .directory-item:hover .directory-label,
 .directory-item:focus-visible .directory-label {
   letter-spacing: -0.045em;
-  transform: translateX(8px);
+  transform: translateX(6px);
 }
 
 .directory-page.is-hover-ready .directory-item:hover .directory-label::after,
@@ -373,7 +382,8 @@ img {
 }
 
 .directory-item:active {
-  transform: translateX(calc(var(--item-offset, 0vw) + 20px)) scale(1.06);
+  transform: translateX(calc(var(--item-offset, 0vw) + 14px))
+    translateY(var(--item-float-y)) scale(1.04);
 }
 
 .directory-glass-line {
@@ -869,8 +879,8 @@ img {
 @media (max-width: 760px) {
   :root {
     --landing-name-size: clamp(82px, 25vw, 120px);
-    --directory-title-size: clamp(46px, 13vw, 86px);
-    --directory-item-height: 48vh;
+    --directory-title-size: clamp(38px, 11vw, 68px);
+    --directory-item-height: 30vh;
     --directory-side-gap: 22px;
   }
 
@@ -889,12 +899,12 @@ img {
   }
 
   .directory-list {
-    padding: 15vh 22px 22vh;
+    padding: 12vh 22px 16vh;
   }
 
   .directory-item {
     min-height: var(--directory-item-height);
-    transform: translateX(calc(var(--focus) * 7px)) scale(calc(1 + var(--focus) * 0.025));
+    transform: translateX(var(--item-wake-x)) translateY(var(--item-float-y)) scale(var(--item-scale));
   }
 
   .directory-label {
@@ -908,7 +918,7 @@ img {
   .directory-page.is-hover-ready .directory-item:hover,
   .directory-item:focus-visible,
   .directory-item.is-selected {
-    transform: translateX(8px) scale(1.026);
+    transform: translateX(8px) translateY(var(--item-float-y)) scale(1.026);
   }
 
   .directory-page.is-hover-ready .directory-item:hover .directory-label,
