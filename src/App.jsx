@@ -205,32 +205,35 @@ function LandingHexParticles({ nameRef }) {
     if (!canvas) return undefined;
 
     const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    const particleConfig = {
-      gridSize: 15,
-      minSpawnDistance: 15,
-      sideScatter: 11,
-      minSize: 4,
-      maxSize: 9,
-      maxParticles: 1200,
-      nameFade: 0.44,
+    const honeycombConfig = {
+      HEX_SIZE: 8,
+      HEX_GAP: 0,
+      BRUSH_RADIUS: 1,
+      SAMPLE_STEP_RATIO: 0.45,
+      MAX_HEXES: 1800,
+      APPEAR_DURATION: 240,
+      NAME_FADE: 0.46,
     };
     const colorLevels = [
-      { rgb: [99, 200, 255], alpha: 0.22 },
-      { rgb: [47, 151, 229], alpha: 0.34 },
-      { rgb: [22, 121, 211], alpha: 0.46 },
-      { rgb: [10, 78, 174], alpha: 0.58 },
-      { rgb: [6, 59, 142], alpha: 0.68 },
+      { rgb: [145, 221, 255], alpha: 0.28 },
+      { rgb: [99, 200, 255], alpha: 0.38 },
+      { rgb: [47, 151, 229], alpha: 0.5 },
+      { rgb: [22, 121, 211], alpha: 0.62 },
+      { rgb: [10, 78, 174], alpha: 0.72 },
     ];
-    const particles = new Map();
+    const activeHexes = new Map();
     const pointer = {
-      previous: null,
-      lastSpawn: null,
+      previousSample: null,
       lastTime: performance.now(),
     };
     let frameId = 0;
     let width = 0;
     let height = 0;
     let dpr = 1;
+    let hexWidth = 0;
+    let xStep = 0;
+    let yStep = 0;
+    let sampleStep = 0;
     const ctx = canvas.getContext('2d');
 
     if (!ctx || isCoarsePointer) {
@@ -247,124 +250,244 @@ function LandingHexParticles({ nameRef }) {
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hexWidth = Math.sqrt(3) * honeycombConfig.HEX_SIZE;
+      xStep = hexWidth + honeycombConfig.HEX_GAP;
+      yStep = honeycombConfig.HEX_SIZE * 1.5 + honeycombConfig.HEX_GAP;
+      sampleStep = honeycombConfig.HEX_SIZE * honeycombConfig.SAMPLE_STEP_RATIO;
     };
 
-    const particleKey = (x, y) => {
-      const gridX = Math.round(x / particleConfig.gridSize);
-      const gridY = Math.round(y / particleConfig.gridSize);
-      return `${gridX}_${gridY}`;
+    const cellCenter = (col, row) => ({
+      x: col * xStep + (Math.abs(row) % 2) * (xStep / 2),
+      y: row * yStep,
+    });
+
+    const nearestCell = (x, y) => {
+      const approxRow = Math.round(y / yStep);
+      const approxCol = Math.round((x - (Math.abs(approxRow) % 2) * (xStep / 2)) / xStep);
+      let best = { col: approxCol, row: approxRow, distance: Infinity, x, y };
+
+      for (let row = approxRow - 2; row <= approxRow + 2; row += 1) {
+        for (let col = approxCol - 2; col <= approxCol + 2; col += 1) {
+          const center = cellCenter(col, row);
+          const distance = Math.hypot(center.x - x, center.y - y);
+
+          if (distance < best.distance) {
+            best = { col, row, distance, ...center };
+          }
+        }
+      }
+
+      return best;
     };
 
-    const trimParticles = () => {
-      while (particles.size > particleConfig.maxParticles) {
-        const oldestKey = particles.keys().next().value;
-        particles.delete(oldestKey);
+    const neighborCells = (cell) => {
+      const visited = new Set([`${cell.col}_${cell.row}`]);
+      const result = [cell];
+      let frontier = [cell];
+
+      for (let radius = 0; radius < honeycombConfig.BRUSH_RADIUS; radius += 1) {
+        const nextFrontier = [];
+
+        frontier.forEach(({ col, row }) => {
+          const evenRow = Math.abs(row) % 2 === 0;
+          const offsets = evenRow
+            ? [
+                [-1, 0],
+                [1, 0],
+                [0, -1],
+                [-1, -1],
+                [0, 1],
+                [-1, 1],
+              ]
+            : [
+                [-1, 0],
+                [1, 0],
+                [1, -1],
+                [0, -1],
+                [1, 1],
+                [0, 1],
+              ];
+
+          offsets.forEach(([colOffset, rowOffset]) => {
+            const next = { col: col + colOffset, row: row + rowOffset };
+            const key = `${next.col}_${next.row}`;
+
+            if (!visited.has(key)) {
+              visited.add(key);
+              nextFrontier.push(next);
+              result.push(next);
+            }
+          });
+        });
+
+        frontier = nextFrontier;
+      }
+
+      return result;
+    };
+
+    const trimHexes = () => {
+      while (activeHexes.size > honeycombConfig.MAX_HEXES) {
+        let weakestKey = activeHexes.keys().next().value;
+        let weakestScore = Infinity;
+
+        activeHexes.forEach((hex, key) => {
+          const score = hex.hitCount * 10000000000000 + hex.lastTouchedAt;
+          if (score < weakestScore) {
+            weakestScore = score;
+            weakestKey = key;
+          }
+        });
+
+        activeHexes.delete(weakestKey);
       }
     };
 
-    const touchParticle = (x, y, speed = 0) => {
-      if (x < 0 || x > width || y < 0 || y > height) return;
+    const touchHexCell = (cell, strength = 1) => {
+      const center = cellCenter(cell.col, cell.row);
+      if (
+        center.x < -hexWidth ||
+        center.x > width + hexWidth ||
+        center.y < -honeycombConfig.HEX_SIZE * 2 ||
+        center.y > height + honeycombConfig.HEX_SIZE * 2
+      ) {
+        return;
+      }
 
-      const key = particleKey(x, y);
-      const existing = particles.get(key);
+      const key = `${cell.col}_${cell.row}`;
+      const existing = activeHexes.get(key);
+      const now = performance.now();
 
       if (existing) {
         existing.hitCount = Math.min(existing.hitCount + 1, colorLevels.length);
-        existing.lastHit = performance.now();
+        existing.targetHitCount = existing.hitCount;
+        existing.lastTouchedAt = now;
+        existing.flash = Math.min(existing.flash + 0.18 * strength, 0.34);
         return;
       }
 
-      const speedBoost = clamp(speed / 70, 0, 1);
-      const size = lerp(particleConfig.minSize, particleConfig.maxSize, Math.random() * 0.65 + speedBoost * 0.35);
-
-      particles.set(key, {
-        x: x + (Math.random() - 0.5) * particleConfig.gridSize * 0.42,
-        y: y + (Math.random() - 0.5) * particleConfig.gridSize * 0.42,
-        size,
-        rotation: Math.random() * Math.PI,
+      activeHexes.set(key, {
+        col: cell.col,
+        row: cell.row,
+        x: center.x,
+        y: center.y,
         hitCount: 1,
-        lastHit: performance.now(),
+        targetHitCount: 1,
+        visualLevel: 1,
+        createdAt: now,
+        lastTouchedAt: now,
+        flash: 0.14 * strength,
       });
-      trimParticles();
+      trimHexes();
     };
 
-    const spawnAlongPointer = (x, y, speed) => {
-      const lastSpawn = pointer.lastSpawn;
+    const paintHoneycombAt = (x, y) => {
+      const baseCell = nearestCell(x, y);
+      const cells = neighborCells(baseCell);
 
-      if (lastSpawn && Math.hypot(x - lastSpawn.x, y - lastSpawn.y) < particleConfig.minSpawnDistance) {
+      cells.forEach((cell, index) => {
+        touchHexCell(cell, index === 0 ? 1 : 0.42);
+      });
+    };
+
+    const samplePointerPath = (x, y) => {
+      const previous = pointer.previousSample;
+
+      if (!previous) {
+        paintHoneycombAt(x, y);
+        pointer.previousSample = { x, y };
         return;
       }
 
-      const previous = pointer.previous || { x: x - 1, y };
-      const angle = Math.atan2(y - previous.y, x - previous.x);
-      const normalX = -Math.sin(angle);
-      const normalY = Math.cos(angle);
-      const speedRatio = clamp(speed / 62, 0, 1);
-      const extraCount = speedRatio > 0.72 ? 2 : speedRatio > 0.32 ? 1 : 0;
+      const dx = x - previous.x;
+      const dy = y - previous.y;
+      const distance = Math.hypot(dx, dy);
+      const steps = Math.max(1, Math.ceil(distance / sampleStep));
 
-      touchParticle(x, y, speed);
-
-      for (let index = 0; index < extraCount; index += 1) {
-        const side = index % 2 === 0 ? 1 : -1;
-        const spread = lerp(4, particleConfig.sideScatter, Math.random() * 0.65 + speedRatio * 0.35) * side;
-        const drift = (Math.random() - 0.5) * 8;
-        touchParticle(
-          x + normalX * spread + Math.cos(angle) * drift,
-          y + normalY * spread + Math.sin(angle) * drift,
-          speed,
-        );
+      for (let index = 1; index <= steps; index += 1) {
+        const progress = index / steps;
+        paintHoneycombAt(previous.x + dx * progress, previous.y + dy * progress);
       }
 
-      pointer.lastSpawn = { x, y };
+      pointer.previousSample = { x, y };
     };
 
     const handlePointerMove = (event) => {
       const now = performance.now();
-      const previous = pointer.previous || { x: event.clientX, y: event.clientY };
-      const dx = event.clientX - previous.x;
-      const dy = event.clientY - previous.y;
-      const frameScale = 16.67 / Math.max(now - pointer.lastTime, 8);
-      const speed = Math.hypot(dx, dy) * frameScale;
 
-      spawnAlongPointer(event.clientX, event.clientY, speed);
-      pointer.previous = { x: event.clientX, y: event.clientY };
+      samplePointerPath(event.clientX, event.clientY);
       pointer.lastTime = now;
     };
 
-    const drawHexagon = (particle, alphaScale) => {
-      const level = colorLevels[Math.min(particle.hitCount, colorLevels.length) - 1];
-      const radius = particle.size;
-
+    const drawHexPath = (x, y, radius) => {
       ctx.beginPath();
       for (let side = 0; side < 6; side += 1) {
-        const angle = particle.rotation + Math.PI / 6 + side * (Math.PI / 3);
-        const px = particle.x + Math.cos(angle) * radius;
-        const py = particle.y + Math.sin(angle) * radius;
+        const angle = Math.PI / 6 + side * (Math.PI / 3);
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius;
 
         if (side === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      ctx.fillStyle = `rgba(${level.rgb.join(', ')}, ${level.alpha * alphaScale})`;
-      ctx.fill();
-      ctx.strokeStyle = `rgba(145, 221, 255, ${Math.min(level.alpha + 0.08, 0.7) * alphaScale})`;
-      ctx.lineWidth = 0.7;
-      ctx.stroke();
     };
 
-    const draw = () => {
+    const drawScaleHighlight = (hex, radius, alphaScale, scale) => {
+      const highlightRadius = radius * scale * 0.72;
+      const highlightX = hex.x - radius * scale * 0.18;
+      const highlightY = hex.y - radius * scale * 0.24;
+
+      ctx.save();
+      drawHexPath(hex.x, hex.y, radius * scale);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.moveTo(highlightX - highlightRadius * 0.62, highlightY - highlightRadius * 0.12);
+      ctx.lineTo(highlightX + highlightRadius * 0.18, highlightY - highlightRadius * 0.42);
+      ctx.lineTo(highlightX + highlightRadius * 0.58, highlightY - highlightRadius * 0.1);
+      ctx.lineTo(highlightX - highlightRadius * 0.2, highlightY + highlightRadius * 0.2);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * alphaScale})`;
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const drawHexagon = (hex, time, alphaScale) => {
+      const levelIndex = Math.min(Math.round(hex.visualLevel), colorLevels.length) - 1;
+      const level = colorLevels[levelIndex];
+      const age = time - hex.createdAt;
+      const appear = clamp(age / honeycombConfig.APPEAR_DURATION, 0, 1);
+      const scale = lerp(0.85, 1, 1 - (1 - appear) * (1 - appear));
+      const radius = honeycombConfig.HEX_SIZE + 0.55;
+      const flash = hex.flash;
+
+      hex.visualLevel = lerp(hex.visualLevel, hex.targetHitCount, 0.12);
+      hex.flash = lerp(hex.flash, 0, 0.08);
+
+      ctx.save();
+      ctx.globalAlpha = appear;
+      drawHexPath(hex.x, hex.y, radius * scale);
+      ctx.fillStyle = `rgba(${level.rgb.join(', ')}, ${(level.alpha + flash) * alphaScale})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(145, 221, 255, ${(0.35 + flash * 0.45) * alphaScale})`;
+      ctx.lineWidth = 0.85;
+      ctx.stroke();
+      drawScaleHighlight(hex, radius, alphaScale, scale);
+      ctx.restore();
+    };
+
+    const draw = (time) => {
       const nameRect = nameRef.current?.getBoundingClientRect();
 
       ctx.clearRect(0, 0, width, height);
-      particles.forEach((particle) => {
+      activeHexes.forEach((hex) => {
         const isInsideName =
           nameRect &&
-          particle.x > nameRect.left - 18 &&
-          particle.x < nameRect.right + 18 &&
-          particle.y > nameRect.top - 18 &&
-          particle.y < nameRect.bottom + 18;
+          hex.x > nameRect.left - 12 &&
+          hex.x < nameRect.right + 12 &&
+          hex.y > nameRect.top - 12 &&
+          hex.y < nameRect.bottom + 12;
 
-        drawHexagon(particle, isInsideName ? particleConfig.nameFade : 1);
+        drawHexagon(hex, time, isInsideName ? honeycombConfig.NAME_FADE : 1);
       });
       frameId = window.requestAnimationFrame(draw);
     };
@@ -382,255 +505,6 @@ function LandingHexParticles({ nameRef }) {
   }, [nameRef]);
 
   return <canvas className="hex-particle-canvas" ref={canvasRef} aria-hidden="true" />;
-}
-
-function GlassSignatureLine() {
-  const svgRef = useRef(null);
-  const gradientRef = useRef(null);
-  const midStopRef = useRef(null);
-  const highlightStopRef = useRef(null);
-  const glowPathRef = useRef(null);
-  const bodyPathRef = useRef(null);
-  const highlightPathRef = useRef(null);
-
-  useEffect(() => {
-    const snakeConfig = {
-      segmentCount: 22,
-      minActiveSegments: 7,
-      maxActiveSegments: 21,
-      followFactor: 0.135,
-      bodyFollowFactor: 0.25,
-      minSpacing: 9,
-      maxSpacing: 18,
-      idleWave: 1.6,
-      activeWave: 18,
-      waveFrequency: 0.0048,
-      wavePhase: 0.78,
-      pointerOffset: 20,
-    };
-    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    const origin = { x: window.innerWidth * 0.68, y: window.innerHeight * 0.52 };
-    const segments = Array.from({ length: snakeConfig.segmentCount }, (_, index) => ({
-      x: origin.x - index * snakeConfig.minSpacing,
-      y: origin.y + Math.sin(index * 0.7) * 5,
-    }));
-    const motion = {
-      target: { ...origin },
-      previousHead: { ...origin },
-      previousPointer: { ...origin },
-      eventTime: performance.now(),
-      lastMove: performance.now(),
-      hasMoved: false,
-      pointerSpeed: 0,
-      displaySpeed: 0,
-      gradientAngle: 0,
-      visible: 0,
-    };
-    let frameId = 0;
-
-    if (isCoarsePointer) {
-      if (svgRef.current) svgRef.current.style.display = 'none';
-      return undefined;
-    }
-
-    const updateGradient = (dx, dy, speedRatio) => {
-      const angle = Math.atan2(dy || 0.01, dx || 0.01) * (180 / Math.PI);
-      const midOffset = 36 + speedRatio * 12;
-      const highlightOffset = 56 + speedRatio * 18;
-      const highlightOpacity = 0.32 + speedRatio * 0.48;
-
-      motion.gradientAngle = lerp(motion.gradientAngle, angle, 0.12);
-      gradientRef.current?.setAttribute('gradientTransform', `rotate(${motion.gradientAngle.toFixed(1)} 0.5 0.5)`);
-      midStopRef.current?.setAttribute('offset', `${midOffset.toFixed(1)}%`);
-      highlightStopRef.current?.setAttribute('offset', `${highlightOffset.toFixed(1)}%`);
-      svgRef.current?.style.setProperty('--landing-ribbon-highlight-opacity', String(clamp(highlightOpacity, 0.32, 0.82)));
-    };
-
-    const updateSnakeBody = (time, target, speedRatio) => {
-      const head = segments[0];
-      head.x = lerp(head.x, target.x, snakeConfig.followFactor);
-      head.y = lerp(head.y, target.y, snakeConfig.followFactor);
-
-      const headDx = head.x - motion.previousHead.x;
-      const headDy = head.y - motion.previousHead.y;
-      const spacing = lerp(snakeConfig.minSpacing, snakeConfig.maxSpacing, speedRatio);
-
-      for (let index = 1; index < segments.length; index += 1) {
-        const previous = segments[index - 1];
-        const current = segments[index];
-        const dx = current.x - previous.x;
-        const dy = current.y - previous.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const targetX = previous.x + (dx / distance) * spacing;
-        const targetY = previous.y + (dy / distance) * spacing;
-        const localFollow = snakeConfig.bodyFollowFactor - index * 0.0035;
-
-        current.x = lerp(current.x, targetX, clamp(localFollow, 0.14, snakeConfig.bodyFollowFactor));
-        current.y = lerp(current.y, targetY, clamp(localFollow, 0.14, snakeConfig.bodyFollowFactor));
-      }
-
-      const activeSegments = Math.round(
-        lerp(snakeConfig.minActiveSegments, snakeConfig.maxActiveSegments, speedRatio),
-      );
-      const waveAmplitude = lerp(snakeConfig.idleWave, snakeConfig.activeWave, speedRatio);
-
-      const shaped = segments.slice(0, activeSegments).map((point, index, activePoints) => {
-        const next = activePoints[index - 1] || point;
-        const previous = activePoints[index + 1] || point;
-        const tangentX = next.x - previous.x || headDx || 1;
-        const tangentY = next.y - previous.y || headDy || 0;
-        const tangentLength = Math.hypot(tangentX, tangentY) || 1;
-        const normalX = -tangentY / tangentLength;
-        const normalY = tangentX / tangentLength;
-        const tailFade = 1 - index / Math.max(activeSegments - 1, 1);
-        const wave = Math.sin(time * snakeConfig.waveFrequency + index * snakeConfig.wavePhase) * waveAmplitude;
-
-        return {
-          x: point.x + normalX * wave * tailFade,
-          y: point.y + normalY * wave * tailFade,
-        };
-      });
-
-      motion.previousHead.x = head.x;
-      motion.previousHead.y = head.y;
-
-      return {
-        points: shaped.reverse(),
-        headDx,
-        headDy,
-      };
-    };
-
-    const pointsToPath = (points) => {
-      if (points.length < 2) return '';
-
-      const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
-
-      for (let index = 0; index < points.length - 1; index += 1) {
-        const p0 = points[index - 1] || points[index];
-        const p1 = points[index];
-        const p2 = points[index + 1];
-        const p3 = points[index + 2] || p2;
-        const c1 = {
-          x: p1.x + (p2.x - p0.x) / 6,
-          y: p1.y + (p2.y - p0.y) / 6,
-        };
-        const c2 = {
-          x: p2.x - (p3.x - p1.x) / 6,
-          y: p2.y - (p3.y - p1.y) / 6,
-        };
-
-        commands.push(
-          `C ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}, ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`,
-        );
-      }
-
-      return commands.join(' ');
-    };
-
-    const setGlassPath = (path, opacity) => {
-      [glowPathRef.current, bodyPathRef.current, highlightPathRef.current].forEach((node) => {
-        node?.setAttribute('d', path);
-      });
-      if (svgRef.current) {
-        svgRef.current.style.opacity = String(opacity);
-      }
-    };
-
-    const handlePointerMove = (event) => {
-      if (isCoarsePointer) return;
-
-      const now = performance.now();
-      const dx = event.clientX - motion.previousPointer.x;
-      const dy = event.clientY - motion.previousPointer.y;
-      const frameScale = 16.67 / Math.max(now - motion.eventTime, 8);
-      const pointerSpeed = Math.hypot(dx, dy) * frameScale;
-      const angle = Math.atan2(dy || 0.01, dx || 0.01);
-
-      motion.target.x = event.clientX + Math.cos(angle) * snakeConfig.pointerOffset;
-      motion.target.y = event.clientY + Math.sin(angle) * snakeConfig.pointerOffset;
-      motion.pointerSpeed = clamp(pointerSpeed, 0, 78);
-      motion.previousPointer.x = event.clientX;
-      motion.previousPointer.y = event.clientY;
-      motion.eventTime = now;
-      motion.lastMove = now;
-      motion.hasMoved = true;
-    };
-
-    const handleTouchMove = (event) => {
-      const touch = event.touches?.[0];
-      if (!touch) return;
-
-      const now = performance.now();
-      const dx = touch.clientX - motion.previousPointer.x;
-      const dy = touch.clientY - motion.previousPointer.y;
-      const frameScale = 16.67 / Math.max(now - motion.eventTime, 8);
-      const pointerSpeed = Math.hypot(dx, dy) * frameScale;
-
-      motion.mode = 'follow';
-      motion.target.x = touch.clientX + 14;
-      motion.target.y = touch.clientY + 12;
-      motion.pointerSpeed = clamp(pointerSpeed, 0, 64);
-      motion.previousPointer.x = touch.clientX;
-      motion.previousPointer.y = touch.clientY;
-      motion.eventTime = now;
-      motion.lastMove = now;
-      motion.hasMoved = true;
-    };
-
-    const animate = (time) => {
-      const idleTime = time - motion.lastMove;
-      const targetSpeed = idleTime > 120 ? 0 : motion.pointerSpeed;
-      motion.displaySpeed = lerp(motion.displaySpeed, targetSpeed, idleTime > 120 ? 0.035 : 0.16);
-      const movementRatio = clamp(motion.displaySpeed / 46, 0, 1);
-      const speedRatio = movementRatio;
-      const target = motion.target;
-      const snake = updateSnakeBody(time, target, speedRatio);
-      const path = pointsToPath(snake.points);
-      const opacityTarget = motion.hasMoved ? (idleTime < 1800 ? 0.72 : 0.28) : 0;
-
-      updateGradient(snake.headDx, snake.headDy, speedRatio);
-      motion.visible = lerp(motion.visible, opacityTarget, 0.08);
-      setGlassPath(path, motion.visible);
-      frameId = window.requestAnimationFrame(animate);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
-    frameId = window.requestAnimationFrame(animate);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.cancelAnimationFrame(frameId);
-    };
-  }, []);
-
-  return (
-    <svg className="glass-signature" ref={svgRef} aria-hidden="true">
-      <defs>
-        <linearGradient id="glassRibbonStroke" ref={gradientRef} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(6, 59, 142, 0)" />
-          <stop offset="14%" stopColor="rgba(6, 59, 142, 0.42)" />
-          <stop ref={midStopRef} offset="40%" stopColor="rgba(22, 121, 211, 0.72)" />
-          <stop ref={highlightStopRef} offset="62%" stopColor="rgba(145, 221, 255, 0.82)" />
-          <stop offset="100%" stopColor="rgba(99, 200, 255, 0)" />
-        </linearGradient>
-        <linearGradient id="glassRibbonHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(10, 78, 174, 0)" />
-          <stop offset="44%" stopColor="rgba(99, 200, 255, 0.52)" />
-          <stop offset="58%" stopColor="rgba(255, 255, 255, 0.7)" />
-          <stop offset="100%" stopColor="rgba(47, 151, 229, 0)" />
-        </linearGradient>
-        <filter id="glassRibbonSoftBlur" x="-20%" y="-80%" width="140%" height="260%">
-          <feGaussianBlur stdDeviation="4.4" />
-        </filter>
-      </defs>
-      <path className="glass-line-glow" ref={glowPathRef} />
-      <path className="glass-line-body" ref={bodyPathRef} />
-      <path className="glass-line-highlight" ref={highlightPathRef} />
-    </svg>
-  );
 }
 
 function LandingIntro({ isExiting, onEnter }) {
@@ -723,7 +597,6 @@ function LandingIntro({ isExiting, onEnter }) {
       onKeyDown={handleKeyDown}
     >
       <LandingHexParticles nameRef={nameRef} />
-      <GlassSignatureLine />
       <div className="landing-mark" ref={markRef} aria-hidden="true">
         <h1 ref={nameRef}>Liu KwokYuk</h1>
       </div>

@@ -15,7 +15,6 @@
   --landing-name-soft: #3a3936;
   --landing-name-deep: #181817;
   --landing-name-reflection: 99 200 255;
-  --signature-blue: #9fe4ff;
 
   /* Directory tuning: change these values to adjust the index page. */
   --directory-bg: #f3f0ea;
@@ -81,7 +80,7 @@ img {
   max-width: 100%;
 }
 
-/* Opening poster: intentionally limited to background, name and signature line. */
+/* Opening poster: intentionally limited to background, name and honeycomb trail. */
 .landing-intro {
   position: fixed;
   inset: 0;
@@ -160,50 +159,6 @@ img {
   pointer-events: none;
 }
 
-.glass-signature {
-  --landing-ribbon-highlight-opacity: 0.44;
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  opacity: 0;
-  pointer-events: none;
-  transform-origin: center;
-  transition:
-    opacity 480ms ease,
-    filter 700ms ease,
-    transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-line-glow,
-.glass-line-body,
-.glass-line-highlight {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.glass-line-glow {
-  stroke: rgba(6, 59, 142, 0.26);
-  stroke-width: 20;
-  filter: url("#glassRibbonSoftBlur");
-}
-
-.glass-line-body {
-  stroke: url("#glassRibbonStroke");
-  stroke-width: 7.5;
-  opacity: 0.96;
-}
-
-.glass-line-highlight {
-  stroke: url("#glassRibbonHighlight");
-  stroke-width: 2.1;
-  opacity: var(--landing-ribbon-highlight-opacity);
-}
-
 /* Click, Enter or Space scales the mark, fades it out, then reveals the index. */
 .landing-intro.is-exiting {
   pointer-events: none;
@@ -213,12 +168,6 @@ img {
 .landing-intro.is-exiting .landing-mark {
   opacity: 0;
   transform: scale(1.08);
-}
-
-.landing-intro.is-exiting .glass-signature {
-  opacity: 0 !important;
-  filter: blur(4px);
-  transform: scale(0.92);
 }
 
 .landing-intro.is-exiting .hex-particle-canvas {
