@@ -197,7 +197,194 @@ function mixRgb(from, to, amount) {
   return from.map((value, index) => Math.round(lerp(value, to[index], ratio))).join(' ');
 }
 
-function GlassSignatureLine({ nameRef }) {
+function LandingHexParticles({ nameRef }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const particleConfig = {
+      gridSize: 15,
+      minSpawnDistance: 15,
+      sideScatter: 11,
+      minSize: 4,
+      maxSize: 9,
+      maxParticles: 1200,
+      nameFade: 0.44,
+    };
+    const colorLevels = [
+      { rgb: [99, 200, 255], alpha: 0.22 },
+      { rgb: [47, 151, 229], alpha: 0.34 },
+      { rgb: [22, 121, 211], alpha: 0.46 },
+      { rgb: [10, 78, 174], alpha: 0.58 },
+      { rgb: [6, 59, 142], alpha: 0.68 },
+    ];
+    const particles = new Map();
+    const pointer = {
+      previous: null,
+      lastSpawn: null,
+      lastTime: performance.now(),
+    };
+    let frameId = 0;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx || isCoarsePointer) {
+      canvas.style.display = 'none';
+      return undefined;
+    }
+
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const particleKey = (x, y) => {
+      const gridX = Math.round(x / particleConfig.gridSize);
+      const gridY = Math.round(y / particleConfig.gridSize);
+      return `${gridX}_${gridY}`;
+    };
+
+    const trimParticles = () => {
+      while (particles.size > particleConfig.maxParticles) {
+        const oldestKey = particles.keys().next().value;
+        particles.delete(oldestKey);
+      }
+    };
+
+    const touchParticle = (x, y, speed = 0) => {
+      if (x < 0 || x > width || y < 0 || y > height) return;
+
+      const key = particleKey(x, y);
+      const existing = particles.get(key);
+
+      if (existing) {
+        existing.hitCount = Math.min(existing.hitCount + 1, colorLevels.length);
+        existing.lastHit = performance.now();
+        return;
+      }
+
+      const speedBoost = clamp(speed / 70, 0, 1);
+      const size = lerp(particleConfig.minSize, particleConfig.maxSize, Math.random() * 0.65 + speedBoost * 0.35);
+
+      particles.set(key, {
+        x: x + (Math.random() - 0.5) * particleConfig.gridSize * 0.42,
+        y: y + (Math.random() - 0.5) * particleConfig.gridSize * 0.42,
+        size,
+        rotation: Math.random() * Math.PI,
+        hitCount: 1,
+        lastHit: performance.now(),
+      });
+      trimParticles();
+    };
+
+    const spawnAlongPointer = (x, y, speed) => {
+      const lastSpawn = pointer.lastSpawn;
+
+      if (lastSpawn && Math.hypot(x - lastSpawn.x, y - lastSpawn.y) < particleConfig.minSpawnDistance) {
+        return;
+      }
+
+      const previous = pointer.previous || { x: x - 1, y };
+      const angle = Math.atan2(y - previous.y, x - previous.x);
+      const normalX = -Math.sin(angle);
+      const normalY = Math.cos(angle);
+      const speedRatio = clamp(speed / 62, 0, 1);
+      const extraCount = speedRatio > 0.72 ? 2 : speedRatio > 0.32 ? 1 : 0;
+
+      touchParticle(x, y, speed);
+
+      for (let index = 0; index < extraCount; index += 1) {
+        const side = index % 2 === 0 ? 1 : -1;
+        const spread = lerp(4, particleConfig.sideScatter, Math.random() * 0.65 + speedRatio * 0.35) * side;
+        const drift = (Math.random() - 0.5) * 8;
+        touchParticle(
+          x + normalX * spread + Math.cos(angle) * drift,
+          y + normalY * spread + Math.sin(angle) * drift,
+          speed,
+        );
+      }
+
+      pointer.lastSpawn = { x, y };
+    };
+
+    const handlePointerMove = (event) => {
+      const now = performance.now();
+      const previous = pointer.previous || { x: event.clientX, y: event.clientY };
+      const dx = event.clientX - previous.x;
+      const dy = event.clientY - previous.y;
+      const frameScale = 16.67 / Math.max(now - pointer.lastTime, 8);
+      const speed = Math.hypot(dx, dy) * frameScale;
+
+      spawnAlongPointer(event.clientX, event.clientY, speed);
+      pointer.previous = { x: event.clientX, y: event.clientY };
+      pointer.lastTime = now;
+    };
+
+    const drawHexagon = (particle, alphaScale) => {
+      const level = colorLevels[Math.min(particle.hitCount, colorLevels.length) - 1];
+      const radius = particle.size;
+
+      ctx.beginPath();
+      for (let side = 0; side < 6; side += 1) {
+        const angle = particle.rotation + Math.PI / 6 + side * (Math.PI / 3);
+        const px = particle.x + Math.cos(angle) * radius;
+        const py = particle.y + Math.sin(angle) * radius;
+
+        if (side === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${level.rgb.join(', ')}, ${level.alpha * alphaScale})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(145, 221, 255, ${Math.min(level.alpha + 0.08, 0.7) * alphaScale})`;
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    };
+
+    const draw = () => {
+      const nameRect = nameRef.current?.getBoundingClientRect();
+
+      ctx.clearRect(0, 0, width, height);
+      particles.forEach((particle) => {
+        const isInsideName =
+          nameRect &&
+          particle.x > nameRect.left - 18 &&
+          particle.x < nameRect.right + 18 &&
+          particle.y > nameRect.top - 18 &&
+          particle.y < nameRect.bottom + 18;
+
+        drawHexagon(particle, isInsideName ? particleConfig.nameFade : 1);
+      });
+      frameId = window.requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    frameId = window.requestAnimationFrame(draw);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [nameRef]);
+
+  return <canvas className="hex-particle-canvas" ref={canvasRef} aria-hidden="true" />;
+}
+
+function GlassSignatureLine() {
   const svgRef = useRef(null);
   const gradientRef = useRef(null);
   const midStopRef = useRef(null);
@@ -228,51 +415,23 @@ function GlassSignatureLine({ nameRef }) {
       y: origin.y + Math.sin(index * 0.7) * 5,
     }));
     const motion = {
-      mode: isCoarsePointer ? 'orbit' : 'follow',
       target: { ...origin },
       previousHead: { ...origin },
       previousPointer: { ...origin },
       eventTime: performance.now(),
       lastMove: performance.now(),
+      hasMoved: false,
       pointerSpeed: 0,
       displaySpeed: 0,
       gradientAngle: 0,
-      visible: 0.42,
+      visible: 0,
     };
     let frameId = 0;
 
-    const getNameRect = () => {
-      const rect = nameRef.current?.getBoundingClientRect();
-
-      if (rect?.width && rect?.height) return rect;
-
-      return {
-        left: window.innerWidth * 0.32,
-        top: window.innerHeight * 0.42,
-        width: window.innerWidth * 0.36,
-        height: window.innerHeight * 0.16,
-      };
-    };
-
-    const isInsideName = (x, y) => {
-      const rect = getNameRect();
-      return x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height;
-    };
-
-    const pointOnOrbit = (time) => {
-      const rect = getNameRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const radiusX = rect.width / 2 + clamp(window.innerWidth * 0.05, 44, 78);
-      const radiusY = rect.height / 2 + clamp(window.innerHeight * 0.058, 28, 52);
-      const angle = time * 0.00082 + Math.sin(time * 0.00042) * 0.22;
-      const organicWobble = 1 + Math.sin(time * 0.00115) * 0.045;
-
-      return {
-        x: centerX + Math.cos(angle) * radiusX * organicWobble,
-        y: centerY + Math.sin(angle) * radiusY * (1 + Math.cos(time * 0.001) * 0.04),
-      };
-    };
+    if (isCoarsePointer) {
+      if (svgRef.current) svgRef.current.style.display = 'none';
+      return undefined;
+    }
 
     const updateGradient = (dx, dy, speedRatio) => {
       const angle = Math.atan2(dy || 0.01, dx || 0.01) * (180 / Math.PI);
@@ -388,7 +547,6 @@ function GlassSignatureLine({ nameRef }) {
       const pointerSpeed = Math.hypot(dx, dy) * frameScale;
       const angle = Math.atan2(dy || 0.01, dx || 0.01);
 
-      motion.mode = isInsideName(event.clientX, event.clientY) ? 'orbit' : 'follow';
       motion.target.x = event.clientX + Math.cos(angle) * snakeConfig.pointerOffset;
       motion.target.y = event.clientY + Math.sin(angle) * snakeConfig.pointerOffset;
       motion.pointerSpeed = clamp(pointerSpeed, 0, 78);
@@ -396,6 +554,7 @@ function GlassSignatureLine({ nameRef }) {
       motion.previousPointer.y = event.clientY;
       motion.eventTime = now;
       motion.lastMove = now;
+      motion.hasMoved = true;
     };
 
     const handleTouchMove = (event) => {
@@ -416,19 +575,19 @@ function GlassSignatureLine({ nameRef }) {
       motion.previousPointer.y = touch.clientY;
       motion.eventTime = now;
       motion.lastMove = now;
+      motion.hasMoved = true;
     };
 
     const animate = (time) => {
       const idleTime = time - motion.lastMove;
-      const isOrbitingName = motion.mode === 'orbit' || (isCoarsePointer && idleTime > 900);
       const targetSpeed = idleTime > 120 ? 0 : motion.pointerSpeed;
       motion.displaySpeed = lerp(motion.displaySpeed, targetSpeed, idleTime > 120 ? 0.035 : 0.16);
       const movementRatio = clamp(motion.displaySpeed / 46, 0, 1);
-      const speedRatio = isOrbitingName ? Math.max(movementRatio, 0.42) : movementRatio;
-      const target = isOrbitingName ? pointOnOrbit(time) : motion.target;
+      const speedRatio = movementRatio;
+      const target = motion.target;
       const snake = updateSnakeBody(time, target, speedRatio);
       const path = pointsToPath(snake.points);
-      const opacityTarget = isOrbitingName || idleTime < 1800 ? 0.72 : 0.4;
+      const opacityTarget = motion.hasMoved ? (idleTime < 1800 ? 0.72 : 0.28) : 0;
 
       updateGradient(snake.headDx, snake.headDy, speedRatio);
       motion.visible = lerp(motion.visible, opacityTarget, 0.08);
@@ -445,7 +604,7 @@ function GlassSignatureLine({ nameRef }) {
       window.removeEventListener('touchmove', handleTouchMove);
       window.cancelAnimationFrame(frameId);
     };
-  }, [nameRef]);
+  }, []);
 
   return (
     <svg className="glass-signature" ref={svgRef} aria-hidden="true">
@@ -559,248 +718,16 @@ function LandingIntro({ isExiting, onEnter }) {
       className={`landing-intro${isExiting ? ' is-exiting' : ''}`}
       role="button"
       tabIndex={0}
-      aria-label="进入刘国煜个人作品集"
+      aria-label="Enter Liu KwokYuk portfolio"
       onClick={onEnter}
       onKeyDown={handleKeyDown}
     >
-      <GlassSignatureLine nameRef={nameRef} />
+      <LandingHexParticles nameRef={nameRef} />
+      <GlassSignatureLine />
       <div className="landing-mark" ref={markRef} aria-hidden="true">
-        <h1 ref={nameRef}>刘国煜</h1>
+        <h1 ref={nameRef}>Liu KwokYuk</h1>
       </div>
     </section>
-  );
-}
-
-function DirectoryGlassLine({ scrollerRef, hoveredItemRef }) {
-  const svgRef = useRef(null);
-  const gradientRef = useRef(null);
-  const midStopRef = useRef(null);
-  const highlightStopRef = useRef(null);
-  const glowPathRef = useRef(null);
-  const bodyPathRef = useRef(null);
-  const highlightPathRef = useRef(null);
-
-  useEffect(() => {
-    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    const snakeConfig = {
-      segmentCount: 18,
-      minActiveSegments: 6,
-      maxActiveSegments: 17,
-      followFactor: 0.13,
-      bodyFollowFactor: 0.24,
-      minSpacing: 10,
-      maxSpacing: 18,
-      idleWave: 1.4,
-      activeWave: 14,
-      waveFrequency: 0.0052,
-      wavePhase: 0.78,
-    };
-    const motion = {
-      current: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
-      target: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
-      previous: { x: window.innerWidth * 0.22, y: window.innerHeight * 0.55 },
-      speed: 0,
-      angle: 0,
-      lastMove: 0,
-      visible: isCoarsePointer ? 0.42 : 0,
-    };
-    const segments = Array.from({ length: snakeConfig.segmentCount }, (_, index) => ({
-      x: motion.current.x - index * snakeConfig.minSpacing,
-      y: motion.current.y + Math.sin(index * 0.7) * 4,
-    }));
-    let frameId = 0;
-
-    const setPath = (path) => {
-      [glowPathRef.current, bodyPathRef.current, highlightPathRef.current].forEach((node) => {
-        node?.setAttribute('d', path);
-      });
-    };
-
-    const updateGradient = (dx, dy, speed, isHovering) => {
-      const intensity = clamp(speed / 42, 0, 1);
-      const angle = Math.atan2(dy || 0.01, dx || 0.01) * (180 / Math.PI);
-      const midOffset = 38 + intensity * 13;
-      const highlightOffset = 58 + intensity * 18;
-      const highlightOpacity = (isHovering ? 0.74 : 0.42) + intensity * 0.26;
-
-      motion.angle = lerp(motion.angle, angle, 0.14);
-      gradientRef.current?.setAttribute('gradientTransform', `rotate(${motion.angle.toFixed(1)} 0.5 0.5)`);
-      midStopRef.current?.setAttribute('offset', `${midOffset.toFixed(1)}%`);
-      highlightStopRef.current?.setAttribute('offset', `${highlightOffset.toFixed(1)}%`);
-      svgRef.current?.style.setProperty('--directory-highlight-opacity', String(clamp(highlightOpacity, 0.38, 0.92)));
-    };
-
-    const pointsToPath = (points) => {
-      if (points.length < 2) return '';
-
-      const commands = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
-      for (let index = 0; index < points.length - 1; index += 1) {
-        const p0 = points[index - 1] || points[index];
-        const p1 = points[index];
-        const p2 = points[index + 1];
-        const p3 = points[index + 2] || p2;
-        const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
-        const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
-
-        commands.push(
-          `C ${c1.x.toFixed(1)} ${c1.y.toFixed(1)}, ${c2.x.toFixed(1)} ${c2.y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`,
-        );
-      }
-
-      return commands.join(' ');
-    };
-
-    const buildFollowPath = (time, boost = 0) => {
-      motion.current.x = lerp(motion.current.x, motion.target.x, 0.12);
-      motion.current.y = lerp(motion.current.y, motion.target.y, 0.12);
-
-      const dx = motion.current.x - motion.previous.x;
-      const dy = motion.current.y - motion.previous.y;
-      const distance = Math.hypot(dx, dy);
-      motion.speed = lerp(motion.speed, Math.max(distance, boost), 0.24);
-      segments[0].x = motion.current.x;
-      segments[0].y = motion.current.y;
-
-      const speedRatio = clamp(motion.speed / 36, 0, 1);
-      const spacing = lerp(snakeConfig.minSpacing, snakeConfig.maxSpacing, speedRatio);
-
-      for (let index = 1; index < segments.length; index += 1) {
-        const previous = segments[index - 1];
-        const current = segments[index];
-        const segmentDx = current.x - previous.x;
-        const segmentDy = current.y - previous.y;
-        const segmentDistance = Math.hypot(segmentDx, segmentDy) || 1;
-        const targetX = previous.x + (segmentDx / segmentDistance) * spacing;
-        const targetY = previous.y + (segmentDy / segmentDistance) * spacing;
-        const localFollow = clamp(snakeConfig.bodyFollowFactor - index * 0.004, 0.13, snakeConfig.bodyFollowFactor);
-
-        current.x = lerp(current.x, targetX, localFollow);
-        current.y = lerp(current.y, targetY, localFollow);
-      }
-
-      const idle = time - motion.lastMove;
-      motion.visible = lerp(motion.visible, idle > 1300 ? 0.18 : 0.72, 0.09);
-      motion.previous.x = motion.current.x;
-      motion.previous.y = motion.current.y;
-
-      const activeSegments = Math.round(lerp(snakeConfig.minActiveSegments, snakeConfig.maxActiveSegments, speedRatio));
-      const waveAmplitude = lerp(snakeConfig.idleWave, snakeConfig.activeWave, speedRatio);
-      const shaped = segments.slice(0, activeSegments).map((point, index, activePoints) => {
-        const next = activePoints[index - 1] || point;
-        const previous = activePoints[index + 1] || point;
-        const tangentX = next.x - previous.x || dx || 1;
-        const tangentY = next.y - previous.y || dy || 0;
-        const tangentLength = Math.hypot(tangentX, tangentY) || 1;
-        const normalX = -tangentY / tangentLength;
-        const normalY = tangentX / tangentLength;
-        const tailFade = 1 - index / Math.max(activeSegments - 1, 1);
-        const wave = Math.sin(time * snakeConfig.waveFrequency + index * snakeConfig.wavePhase) * waveAmplitude;
-
-        return {
-          x: point.x + normalX * wave * tailFade,
-          y: point.y + normalY * wave * tailFade,
-        };
-      });
-
-      updateGradient(dx, dy, motion.speed, false);
-      return pointsToPath(shaped.reverse());
-    };
-
-    const buildHoverPath = (time) => {
-      const label = hoveredItemRef.current?.querySelector('.directory-label');
-      const rect = label?.getBoundingClientRect();
-
-      if (!rect?.width || !rect?.height) return null;
-
-      const margin = clamp(rect.width * 0.04, 18, 58);
-      const startX = clamp(rect.left + margin, 34, window.innerWidth - 90);
-      const endX = clamp(rect.right + clamp(rect.width * 0.035, 22, 70), startX + 120, window.innerWidth - 42);
-      const y = clamp(rect.bottom + clamp(window.innerHeight * 0.026, 18, 34), 58, window.innerHeight - 42);
-      const lift = clamp(rect.height * 0.18, 22, 48);
-      const hook = clamp(rect.height * 0.1, 16, 34);
-      const dx = endX - startX;
-
-      motion.current.x = lerp(motion.current.x, endX, 0.1);
-      motion.current.y = lerp(motion.current.y, y, 0.1);
-      motion.target.x = endX;
-      motion.target.y = y;
-      motion.speed = lerp(motion.speed, 14, 0.08);
-      motion.visible = lerp(motion.visible, 0.88, 0.12);
-
-      updateGradient(dx, -lift, 24, true);
-      return buildFollowPath(time, 16);
-    };
-
-    const handlePointerMove = (event) => {
-      if (isCoarsePointer) return;
-
-      motion.target.x = event.clientX + 22;
-      motion.target.y = event.clientY + 16;
-      motion.lastMove = performance.now();
-    };
-
-    const handleTouch = (event) => {
-      const touch = event.touches?.[0];
-      if (!touch) return;
-
-      motion.target.x = touch.clientX + 16;
-      motion.target.y = touch.clientY + 14;
-      motion.lastMove = performance.now();
-      motion.visible = 0.56;
-    };
-
-    const animate = (time) => {
-      const hoverPath = !isCoarsePointer ? buildHoverPath(time) : null;
-      const recentTouch = isCoarsePointer && time - motion.lastMove < 1100;
-      const path =
-        hoverPath ||
-        (isCoarsePointer && !recentTouch
-          ? `M ${(window.innerWidth * 0.18).toFixed(1)} ${(window.innerHeight * 0.58).toFixed(1)} C ${(window.innerWidth * 0.36).toFixed(1)} ${(window.innerHeight * 0.54).toFixed(1)}, ${(window.innerWidth * 0.58).toFixed(1)} ${(window.innerHeight * 0.62).toFixed(1)}, ${(window.innerWidth * 0.78).toFixed(1)} ${(window.innerHeight * 0.56).toFixed(1)}`
-          : buildFollowPath(time));
-
-      setPath(path);
-      if (svgRef.current) {
-        svgRef.current.style.opacity = String(motion.visible);
-      }
-
-      frameId = window.requestAnimationFrame(animate);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    scrollerRef.current?.addEventListener('touchmove', handleTouch, { passive: true });
-    frameId = window.requestAnimationFrame(animate);
-
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      scrollerRef.current?.removeEventListener('touchmove', handleTouch);
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [hoveredItemRef, scrollerRef]);
-
-  return (
-    <svg className="directory-glass-line" ref={svgRef} aria-hidden="true">
-      <defs>
-        <linearGradient id="directoryBlueGlassStroke" ref={gradientRef} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(6, 59, 142, 0)" />
-          <stop offset="16%" stopColor="rgba(6, 59, 142, 0.58)" />
-          <stop ref={midStopRef} offset="44%" stopColor="rgba(22, 121, 211, 0.82)" />
-          <stop ref={highlightStopRef} offset="68%" stopColor="rgba(145, 221, 255, 0.92)" />
-          <stop offset="100%" stopColor="rgba(99, 200, 255, 0)" />
-        </linearGradient>
-        <linearGradient id="directoryBlueGlassHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="rgba(10, 78, 174, 0)" />
-          <stop offset="42%" stopColor="rgba(99, 200, 255, 0.58)" />
-          <stop offset="58%" stopColor="rgba(255, 255, 255, 0.78)" />
-          <stop offset="100%" stopColor="rgba(47, 151, 229, 0)" />
-        </linearGradient>
-        <filter id="directoryBlueGlassBlur" x="-18%" y="-90%" width="136%" height="280%">
-          <feGaussianBlur stdDeviation="4.2" />
-        </filter>
-      </defs>
-      <path className="directory-glass-glow" ref={glowPathRef} />
-      <path className="directory-glass-body" ref={bodyPathRef} />
-      <path className="directory-glass-highlight" ref={highlightPathRef} />
-    </svg>
   );
 }
 
@@ -1008,7 +935,6 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
       aria-label="Portfolio index"
       ref={scrollerRef}
     >
-      <DirectoryGlassLine scrollerRef={scrollerRef} hoveredItemRef={hoveredItemRef} />
       <div className="directory-list" ref={listRef}>
         {directoryItems.map((item, index) => (
           <button

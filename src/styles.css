@@ -10,7 +10,7 @@
 
   /* Landing tuning: change these values to adjust the opening poster. */
   --landing-bg: #f3f0ea;
-  --landing-name-size: clamp(112px, 18vw, 320px);
+  --landing-name-size: clamp(68px, 9vw, 170px);
   --landing-name-default: #32312e;
   --landing-name-soft: #3a3936;
   --landing-name-deep: #181817;
@@ -132,7 +132,7 @@ img {
   font-size: var(--landing-name-size);
   font-weight: 900;
   line-height: 0.95;
-  letter-spacing: -0.08em;
+  letter-spacing: -0.055em;
   white-space: nowrap;
   filter: brightness(calc(1 - var(--name-darkness) * 0.08));
   text-shadow: 0 0 calc(2px + var(--name-reflection-opacity) * 9px)
@@ -146,16 +146,25 @@ img {
 }
 
 .landing-mark:hover h1 {
-  letter-spacing: -0.075em;
+  letter-spacing: -0.048em;
   transform: scale(1.018);
   filter: brightness(0.78);
+}
+
+.hex-particle-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .glass-signature {
   --landing-ribbon-highlight-opacity: 0.44;
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   width: 100%;
   height: 100%;
   overflow: visible;
@@ -210,6 +219,11 @@ img {
   opacity: 0 !important;
   filter: blur(4px);
   transform: scale(0.92);
+}
+
+.landing-intro.is-exiting .hex-particle-canvas {
+  opacity: 0;
+  transition: opacity 520ms ease;
 }
 
 @keyframes landingFadeOut {
@@ -377,56 +391,9 @@ img {
   transform: translateX(12px) translateY(var(--item-float-y)) scale(1.04);
 }
 
-.directory-glass-line {
-  --directory-highlight-opacity: 0.52;
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  overflow: visible;
-  pointer-events: none;
-  transition:
-    opacity 320ms ease,
-    transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.directory-glass-glow,
-.directory-glass-body,
-.directory-glass-highlight {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.directory-glass-glow {
-  stroke: rgba(6, 59, 142, 0.2);
-  stroke-width: 22;
-  filter: url("#directoryBlueGlassBlur");
-}
-
-.directory-glass-body {
-  stroke: url("#directoryBlueGlassStroke");
-  stroke-width: 8.5;
-  opacity: 0.94;
-}
-
-.directory-glass-highlight {
-  stroke: url("#directoryBlueGlassHighlight");
-  stroke-width: 2.3;
-  opacity: var(--directory-highlight-opacity);
-}
-
 .directory-page.is-leaving {
   pointer-events: none;
   animation: directoryLeave 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.directory-page.is-leaving .directory-glass-line {
-  opacity: 0.9 !important;
-  transform: scaleX(1.1);
 }
 
 .directory-page.is-leaving .directory-item:not(.is-selected) {
@@ -869,14 +836,14 @@ img {
 
 @media (max-width: 760px) {
   :root {
-    --landing-name-size: clamp(82px, 25vw, 120px);
+    --landing-name-size: clamp(42px, 12.5vw, 64px);
     --directory-title-size: clamp(40px, 11.5vw, 68px);
     --directory-item-gap: 0.72em;
     --directory-side-gap: 22px;
   }
 
   .landing-mark h1 {
-    letter-spacing: -0.1em;
+    letter-spacing: -0.064em;
   }
 
   .directory-page {
@@ -899,14 +866,6 @@ img {
     letter-spacing: -0.055em;
     white-space: normal;
     overflow-wrap: anywhere;
-  }
-
-  .directory-glass-body {
-    stroke-width: 6.5;
-  }
-
-  .directory-glass-glow {
-    stroke-width: 16;
   }
 
   .detail-shell {
