@@ -19,8 +19,8 @@
 
   /* Directory tuning: change these values to adjust the index page. */
   --directory-bg: #f3f0ea;
-  --directory-title-size: clamp(54px, 7vw, 132px);
-  --directory-item-height: 28vh;
+  --directory-title-size: clamp(48px, 6.5vw, 118px);
+  --directory-item-gap: 0.55em;
   --directory-min-opacity: 0.18;
   --directory-max-blur: 1.2px;
   --directory-float-max: 22px;
@@ -259,7 +259,7 @@ img {
   height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
-  scroll-snap-type: y proximity;
+  scroll-snap-type: none;
   overscroll-behavior: contain;
   background: var(--directory-bg);
   animation: directoryEnter 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -282,8 +282,10 @@ img {
   width: min(var(--max), 100%);
   display: flex;
   flex-direction: column;
+  gap: var(--directory-item-gap);
   margin: 0 auto;
-  padding: 12vh var(--directory-side-gap) 16vh;
+  padding: 12vh var(--directory-side-gap) 14vh;
+  font-size: var(--directory-title-size);
 }
 
 .directory-item {
@@ -294,7 +296,6 @@ img {
   --item-wake-x: 0px;
   --focus-ink: 168 165 161;
   position: relative;
-  min-height: var(--directory-item-height);
   display: flex;
   align-items: center;
   width: 100%;
@@ -322,7 +323,7 @@ img {
   display: inline-block;
   max-width: 100%;
   color: inherit;
-  font-size: var(--directory-title-size);
+  font-size: 1em;
   font-weight: 260;
   line-height: 0.88;
   letter-spacing: -0.07em;
@@ -879,8 +880,8 @@ img {
 @media (max-width: 760px) {
   :root {
     --landing-name-size: clamp(82px, 25vw, 120px);
-    --directory-title-size: clamp(38px, 11vw, 68px);
-    --directory-item-height: 30vh;
+    --directory-title-size: clamp(40px, 11.5vw, 68px);
+    --directory-item-gap: 0.72em;
     --directory-side-gap: 22px;
   }
 
@@ -899,12 +900,7 @@ img {
   }
 
   .directory-list {
-    padding: 12vh 22px 16vh;
-  }
-
-  .directory-item {
-    min-height: var(--directory-item-height);
-    transform: translateX(var(--item-wake-x)) translateY(var(--item-float-y)) scale(var(--item-scale));
+    padding: 13vh 22px 22vh;
   }
 
   .directory-label {

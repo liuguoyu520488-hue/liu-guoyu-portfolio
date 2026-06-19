@@ -814,6 +814,16 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
     const scroller = scrollerRef.current;
     if (!scroller) return undefined;
 
+    const AUTO_SCROLL_ENABLED = true;
+    const AUTO_SCROLL_EDGE_RATIO = 0.22;
+    const AUTO_SCROLL_MAX_SPEED = 16;
+    const AUTO_SCROLL_MIN_SPEED = 0.55;
+    const AUTO_SCROLL_EASE = 0.08;
+    const DIRECTORY_MOUSE_FLOAT = 0.16;
+    const DIRECTORY_SCROLL_INERTIA = 0.82;
+    const DIRECTORY_FLOAT_MAX = 22;
+    const isAutoScrollEnabled =
+      AUTO_SCROLL_ENABLED && !window.matchMedia('(hover: none), (pointer: coarse)').matches;
     let frameId = 0;
     const gray = [168, 165, 161];
     const ink = [17, 17, 17];
@@ -823,11 +833,42 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
       lastMouseY: scroller.clientHeight / 2,
       mouseVelocityY: 0,
       lastMouseMove: 0,
+      isPointerInside: false,
+      autoScrollSpeed: 0,
       previousScrollTop: restoreScrollTop,
       scrollVelocity: 0,
     };
 
+    const getAutoScrollTarget = () => {
+      if (!isAutoScrollEnabled || !motion.isPointerInside) return 0;
+
+      const viewportHeight = scroller.clientHeight;
+      const edgeSize = viewportHeight * AUTO_SCROLL_EDGE_RATIO;
+
+      if (motion.mouseY < edgeSize) {
+        const pressure = 1 - motion.mouseY / edgeSize;
+        const speed = AUTO_SCROLL_MIN_SPEED + pressure * (AUTO_SCROLL_MAX_SPEED - AUTO_SCROLL_MIN_SPEED);
+        return -speed;
+      }
+
+      if (motion.mouseY > viewportHeight - edgeSize) {
+        const pressure = (motion.mouseY - (viewportHeight - edgeSize)) / edgeSize;
+        return AUTO_SCROLL_MIN_SPEED + pressure * (AUTO_SCROLL_MAX_SPEED - AUTO_SCROLL_MIN_SPEED);
+      }
+
+      return 0;
+    };
+
     const updateItemMotion = () => {
+      const targetAutoScrollSpeed = getAutoScrollTarget();
+      motion.autoScrollSpeed = lerp(motion.autoScrollSpeed, targetAutoScrollSpeed, AUTO_SCROLL_EASE);
+
+      if (Math.abs(motion.autoScrollSpeed) > 0.02) {
+        scroller.scrollTop += motion.autoScrollSpeed;
+      } else {
+        motion.autoScrollSpeed = 0;
+      }
+
       const viewportCenter = scroller.getBoundingClientRect().top + scroller.clientHeight / 2;
       const centerRange = scroller.clientHeight / 2;
       const mouseActive = performance.now() - motion.lastMouseMove < 1200;
@@ -851,7 +892,12 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
         const opacity = clamp(0.18 + centerProgress * 0.72 + mouseProgress * 0.22, 0.18, 1);
         const scale = clamp(0.96 + centerProgress * 0.04 + mouseProgress * 0.018, 0.96, 1.04);
         const blur = clamp((1 - clarity) * 1.2, 0, 1.2);
-        const floatY = clamp(mouseProgress * motion.mouseVelocityY * 0.16 - motion.scrollVelocity * 0.82, -22, 22);
+        const floatY = clamp(
+          mouseProgress * motion.mouseVelocityY * DIRECTORY_MOUSE_FLOAT -
+            motion.scrollVelocity * DIRECTORY_SCROLL_INERTIA,
+          -DIRECTORY_FLOAT_MAX,
+          DIRECTORY_FLOAT_MAX,
+        );
         const wakeX = clamp(centerProgress * 8 + mouseProgress * 8, 0, 14);
         const colorProgress = clamp(centerProgress * 0.72 + mouseProgress * 0.38, 0, 0.9);
 
@@ -869,17 +915,24 @@ function DirectoryPage({ isLeaving, selectedId, restoreScrollTop, onSelect }) {
 
     const handlePointerMove = (event) => {
       motion.targetMouseY = event.clientY;
+      motion.isPointerInside = true;
       motion.lastMouseMove = performance.now();
+    };
+
+    const handlePointerLeave = () => {
+      motion.isPointerInside = false;
     };
 
     scroller.scrollTop = restoreScrollTop;
     motion.previousScrollTop = restoreScrollTop;
     scroller.addEventListener('pointermove', handlePointerMove, { passive: true });
+    scroller.addEventListener('pointerleave', handlePointerLeave, { passive: true });
     frameId = window.requestAnimationFrame(updateItemMotion);
 
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
       scroller.removeEventListener('pointermove', handlePointerMove);
+      scroller.removeEventListener('pointerleave', handlePointerLeave);
     };
   }, [restoreScrollTop]);
 
