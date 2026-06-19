@@ -901,18 +901,6 @@ img {
     overflow-wrap: anywhere;
   }
 
-  .directory-page.is-hover-ready .directory-item:hover,
-  .directory-item:focus-visible,
-  .directory-item.is-selected {
-    transform: translateX(8px) translateY(var(--item-float-y)) scale(1.026);
-  }
-
-  .directory-page.is-hover-ready .directory-item:hover .directory-label,
-  .directory-item:focus-visible .directory-label {
-    letter-spacing: -0.04em;
-    transform: none;
-  }
-
   .directory-glass-body {
     stroke-width: 6.5;
   }
