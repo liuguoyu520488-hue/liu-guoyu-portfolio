@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import GhostCursor from './GhostCursor';
 
 const INTRO_EXIT_DURATION = 900;
 const DIRECTORY_EXIT_DURATION = 560;
@@ -197,316 +198,6 @@ function mixRgb(from, to, amount) {
   return from.map((value, index) => Math.round(lerp(value, to[index], ratio))).join(' ');
 }
 
-function LandingHexParticles({ nameRef }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-
-    const isCoarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    const honeycombConfig = {
-      HEX_SIZE: 8,
-      HEX_GAP: 0,
-      BRUSH_RADIUS: 1,
-      SAMPLE_STEP_RATIO: 0.45,
-      MAX_HEXES: 1800,
-      APPEAR_DURATION: 240,
-      NAME_FADE: 0.46,
-    };
-    const colorLevels = [
-      { rgb: [145, 221, 255], alpha: 0.28 },
-      { rgb: [99, 200, 255], alpha: 0.38 },
-      { rgb: [47, 151, 229], alpha: 0.5 },
-      { rgb: [22, 121, 211], alpha: 0.62 },
-      { rgb: [10, 78, 174], alpha: 0.72 },
-    ];
-    const activeHexes = new Map();
-    const pointer = {
-      previousSample: null,
-      lastTime: performance.now(),
-    };
-    let frameId = 0;
-    let width = 0;
-    let height = 0;
-    let dpr = 1;
-    let hexWidth = 0;
-    let xStep = 0;
-    let yStep = 0;
-    let sampleStep = 0;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx || isCoarsePointer) {
-      canvas.style.display = 'none';
-      return undefined;
-    }
-
-    const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = window.innerWidth;
-      height = window.innerHeight;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      hexWidth = Math.sqrt(3) * honeycombConfig.HEX_SIZE;
-      xStep = hexWidth + honeycombConfig.HEX_GAP;
-      yStep = honeycombConfig.HEX_SIZE * 1.5 + honeycombConfig.HEX_GAP;
-      sampleStep = honeycombConfig.HEX_SIZE * honeycombConfig.SAMPLE_STEP_RATIO;
-    };
-
-    const cellCenter = (col, row) => ({
-      x: col * xStep + (Math.abs(row) % 2) * (xStep / 2),
-      y: row * yStep,
-    });
-
-    const nearestCell = (x, y) => {
-      const approxRow = Math.round(y / yStep);
-      const approxCol = Math.round((x - (Math.abs(approxRow) % 2) * (xStep / 2)) / xStep);
-      let best = { col: approxCol, row: approxRow, distance: Infinity, x, y };
-
-      for (let row = approxRow - 2; row <= approxRow + 2; row += 1) {
-        for (let col = approxCol - 2; col <= approxCol + 2; col += 1) {
-          const center = cellCenter(col, row);
-          const distance = Math.hypot(center.x - x, center.y - y);
-
-          if (distance < best.distance) {
-            best = { col, row, distance, ...center };
-          }
-        }
-      }
-
-      return best;
-    };
-
-    const neighborCells = (cell) => {
-      const visited = new Set([`${cell.col}_${cell.row}`]);
-      const result = [cell];
-      let frontier = [cell];
-
-      for (let radius = 0; radius < honeycombConfig.BRUSH_RADIUS; radius += 1) {
-        const nextFrontier = [];
-
-        frontier.forEach(({ col, row }) => {
-          const evenRow = Math.abs(row) % 2 === 0;
-          const offsets = evenRow
-            ? [
-                [-1, 0],
-                [1, 0],
-                [0, -1],
-                [-1, -1],
-                [0, 1],
-                [-1, 1],
-              ]
-            : [
-                [-1, 0],
-                [1, 0],
-                [1, -1],
-                [0, -1],
-                [1, 1],
-                [0, 1],
-              ];
-
-          offsets.forEach(([colOffset, rowOffset]) => {
-            const next = { col: col + colOffset, row: row + rowOffset };
-            const key = `${next.col}_${next.row}`;
-
-            if (!visited.has(key)) {
-              visited.add(key);
-              nextFrontier.push(next);
-              result.push(next);
-            }
-          });
-        });
-
-        frontier = nextFrontier;
-      }
-
-      return result;
-    };
-
-    const trimHexes = () => {
-      while (activeHexes.size > honeycombConfig.MAX_HEXES) {
-        let weakestKey = activeHexes.keys().next().value;
-        let weakestScore = Infinity;
-
-        activeHexes.forEach((hex, key) => {
-          const score = hex.hitCount * 10000000000000 + hex.lastTouchedAt;
-          if (score < weakestScore) {
-            weakestScore = score;
-            weakestKey = key;
-          }
-        });
-
-        activeHexes.delete(weakestKey);
-      }
-    };
-
-    const touchHexCell = (cell, strength = 1) => {
-      const center = cellCenter(cell.col, cell.row);
-      if (
-        center.x < -hexWidth ||
-        center.x > width + hexWidth ||
-        center.y < -honeycombConfig.HEX_SIZE * 2 ||
-        center.y > height + honeycombConfig.HEX_SIZE * 2
-      ) {
-        return;
-      }
-
-      const key = `${cell.col}_${cell.row}`;
-      const existing = activeHexes.get(key);
-      const now = performance.now();
-
-      if (existing) {
-        existing.hitCount = Math.min(existing.hitCount + 1, colorLevels.length);
-        existing.targetHitCount = existing.hitCount;
-        existing.lastTouchedAt = now;
-        existing.flash = Math.min(existing.flash + 0.18 * strength, 0.34);
-        return;
-      }
-
-      activeHexes.set(key, {
-        col: cell.col,
-        row: cell.row,
-        x: center.x,
-        y: center.y,
-        hitCount: 1,
-        targetHitCount: 1,
-        visualLevel: 1,
-        createdAt: now,
-        lastTouchedAt: now,
-        flash: 0.14 * strength,
-      });
-      trimHexes();
-    };
-
-    const paintHoneycombAt = (x, y) => {
-      const baseCell = nearestCell(x, y);
-      const cells = neighborCells(baseCell);
-
-      cells.forEach((cell, index) => {
-        touchHexCell(cell, index === 0 ? 1 : 0.42);
-      });
-    };
-
-    const samplePointerPath = (x, y) => {
-      const previous = pointer.previousSample;
-
-      if (!previous) {
-        paintHoneycombAt(x, y);
-        pointer.previousSample = { x, y };
-        return;
-      }
-
-      const dx = x - previous.x;
-      const dy = y - previous.y;
-      const distance = Math.hypot(dx, dy);
-      const steps = Math.max(1, Math.ceil(distance / sampleStep));
-
-      for (let index = 1; index <= steps; index += 1) {
-        const progress = index / steps;
-        paintHoneycombAt(previous.x + dx * progress, previous.y + dy * progress);
-      }
-
-      pointer.previousSample = { x, y };
-    };
-
-    const handlePointerMove = (event) => {
-      const now = performance.now();
-
-      samplePointerPath(event.clientX, event.clientY);
-      pointer.lastTime = now;
-    };
-
-    const drawHexPath = (x, y, radius) => {
-      ctx.beginPath();
-      for (let side = 0; side < 6; side += 1) {
-        const angle = Math.PI / 6 + side * (Math.PI / 3);
-        const px = x + Math.cos(angle) * radius;
-        const py = y + Math.sin(angle) * radius;
-
-        if (side === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
-    };
-
-    const drawScaleHighlight = (hex, radius, alphaScale, scale) => {
-      const highlightRadius = radius * scale * 0.72;
-      const highlightX = hex.x - radius * scale * 0.18;
-      const highlightY = hex.y - radius * scale * 0.24;
-
-      ctx.save();
-      drawHexPath(hex.x, hex.y, radius * scale);
-      ctx.clip();
-      ctx.beginPath();
-      ctx.moveTo(highlightX - highlightRadius * 0.62, highlightY - highlightRadius * 0.12);
-      ctx.lineTo(highlightX + highlightRadius * 0.18, highlightY - highlightRadius * 0.42);
-      ctx.lineTo(highlightX + highlightRadius * 0.58, highlightY - highlightRadius * 0.1);
-      ctx.lineTo(highlightX - highlightRadius * 0.2, highlightY + highlightRadius * 0.2);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * alphaScale})`;
-      ctx.fill();
-      ctx.restore();
-    };
-
-    const drawHexagon = (hex, time, alphaScale) => {
-      const levelIndex = Math.min(Math.round(hex.visualLevel), colorLevels.length) - 1;
-      const level = colorLevels[levelIndex];
-      const age = time - hex.createdAt;
-      const appear = clamp(age / honeycombConfig.APPEAR_DURATION, 0, 1);
-      const scale = lerp(0.85, 1, 1 - (1 - appear) * (1 - appear));
-      const radius = honeycombConfig.HEX_SIZE + 0.55;
-      const flash = hex.flash;
-
-      hex.visualLevel = lerp(hex.visualLevel, hex.targetHitCount, 0.12);
-      hex.flash = lerp(hex.flash, 0, 0.08);
-
-      ctx.save();
-      ctx.globalAlpha = appear;
-      drawHexPath(hex.x, hex.y, radius * scale);
-      ctx.fillStyle = `rgba(${level.rgb.join(', ')}, ${(level.alpha + flash) * alphaScale})`;
-      ctx.fill();
-      ctx.strokeStyle = `rgba(145, 221, 255, ${(0.35 + flash * 0.45) * alphaScale})`;
-      ctx.lineWidth = 0.85;
-      ctx.stroke();
-      drawScaleHighlight(hex, radius, alphaScale, scale);
-      ctx.restore();
-    };
-
-    const draw = (time) => {
-      const nameRect = nameRef.current?.getBoundingClientRect();
-
-      ctx.clearRect(0, 0, width, height);
-      activeHexes.forEach((hex) => {
-        const isInsideName =
-          nameRect &&
-          hex.x > nameRect.left - 12 &&
-          hex.x < nameRect.right + 12 &&
-          hex.y > nameRect.top - 12 &&
-          hex.y < nameRect.bottom + 12;
-
-        drawHexagon(hex, time, isInsideName ? honeycombConfig.NAME_FADE : 1);
-      });
-      frameId = window.requestAnimationFrame(draw);
-    };
-
-    resize();
-    window.addEventListener('resize', resize);
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    frameId = window.requestAnimationFrame(draw);
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [nameRef]);
-
-  return <canvas className="hex-particle-canvas" ref={canvasRef} aria-hidden="true" />;
-}
-
 function LandingIntro({ isExiting, onEnter }) {
   const nameRef = useRef(null);
   const markRef = useRef(null);
@@ -596,7 +287,21 @@ function LandingIntro({ isExiting, onEnter }) {
       onClick={onEnter}
       onKeyDown={handleKeyDown}
     >
-      <LandingHexParticles nameRef={nameRef} />
+      <div className="ghost-cursor-frame" aria-hidden="true">
+        <GhostCursor
+          color="#97becf"
+          brightness={2.9}
+          edgeIntensity={0}
+          trailLength={50}
+          inertia={0.74}
+          grainIntensity={0.04}
+          bloomStrength={0.1}
+          bloomRadius={2.85}
+          bloomThreshold={0.025}
+          fadeDelayMs={1000}
+          fadeDurationMs={1500}
+        />
+      </div>
       <div className="landing-mark" ref={markRef} aria-hidden="true">
         <h1 ref={nameRef}>Liu KwokYuk</h1>
       </div>

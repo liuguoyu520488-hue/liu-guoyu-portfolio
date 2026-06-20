@@ -80,7 +80,7 @@ img {
   max-width: 100%;
 }
 
-/* Opening poster: intentionally limited to background, name and honeycomb trail. */
+/* Opening poster: intentionally limited to background, name and GhostCursor motion. */
 .landing-intro {
   position: fixed;
   inset: 0;
@@ -150,13 +150,18 @@ img {
   filter: brightness(0.78);
 }
 
-.hex-particle-canvas {
+.ghost-cursor-frame,
+.ghost-cursor-canvas {
   position: absolute;
   inset: 0;
   z-index: 1;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.ghost-cursor-canvas {
+  display: block;
 }
 
 /* Click, Enter or Space scales the mark, fades it out, then reveals the index. */
@@ -170,7 +175,7 @@ img {
   transform: scale(1.08);
 }
 
-.landing-intro.is-exiting .hex-particle-canvas {
+.landing-intro.is-exiting .ghost-cursor-frame {
   opacity: 0;
   transition: opacity 520ms ease;
 }
